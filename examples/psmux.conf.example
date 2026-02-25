@@ -1,0 +1,88 @@
+# =============================================================================
+# Example psmux configuration with plugins
+# Save as: ~/.psmux.conf  (or %USERPROFILE%\.psmux.conf)
+# =============================================================================
+
+# --- General Settings ---
+set -g prefix C-a                    # Change prefix to Ctrl+a
+set -g mouse on                      # Enable mouse support
+set -g base-index 1                  # Start window numbering at 1
+set -g pane-base-index 1             # Start pane numbering at 1
+set -g escape-time 50                # Faster key response
+set -g history-limit 50000           # Large scrollback buffer
+set -g renumber-windows on           # No gaps in window numbers
+set -g mode-keys vi                  # Vi copy mode
+
+# --- Appearance ---
+# Choose ONE theme (uncomment your preferred theme):
+# set -g @dracula-show-powerline 'on'
+# set -g @catppuccin-flavor 'mocha'          # latte|frappe|macchiato|mocha
+# set -g @nord-show-powerline 'on'
+# set -g @tokyonight-style 'night'           # night|storm|moon
+# set -g @gruvbox-variant 'dark'             # dark|light
+
+# Or set manual appearance:
+set -g status-style "bg=colour235,fg=colour136"
+set -g status-left "#[fg=colour46,bold][#S] "
+set -g status-right "{battery} {cpu} | %H:%M %d-%b"
+set -g pane-active-border-style "fg=colour46"
+set -g window-status-current-format "#[fg=colour166,bold] #I:#W "
+set -g window-status-activity-style "fg=colour160"
+
+# --- Shell ---
+# set -g default-shell pwsh            # PowerShell 7 (default)
+# set -g default-shell cmd             # cmd.exe
+# set -g default-shell nu              # nushell
+
+# --- Cursor ---
+set -g cursor-style bar               # bar, block, or underline
+set -g cursor-blink on
+
+# --- Plugin Options ---
+# psmux-resurrect
+set -g @resurrect-capture-pane-contents 'on'
+
+# psmux-continuum
+set -g @continuum-save-interval '15'
+set -g @continuum-restore 'on'
+
+# psmux-prefix-highlight
+set -g @prefix_highlight_fg 'black'
+set -g @prefix_highlight_bg 'yellow'
+set -g @prefix_highlight_prefix_prompt 'WAIT'
+set -g @prefix_highlight_show_copy_mode 'on'
+set -g @prefix_highlight_show_sync_mode 'on'
+
+# psmux-sidebar
+set -g @sidebar-width '35'
+set -g @sidebar-position 'left'
+
+# psmux-pain-control
+set -g @pane_resize '5'
+
+# --- Custom Keybindings ---
+unbind-key C-b
+bind-key C-a send-prefix
+
+# --- Plugins ---
+set -g @plugin 'psmux-plugins/ppm'
+set -g @plugin 'psmux-plugins/psmux-sensible'
+set -g @plugin 'psmux-plugins/psmux-yank'
+set -g @plugin 'psmux-plugins/psmux-resurrect'
+set -g @plugin 'psmux-plugins/psmux-continuum'
+set -g @plugin 'psmux-plugins/psmux-pain-control'
+set -g @plugin 'psmux-plugins/psmux-prefix-highlight'
+set -g @plugin 'psmux-plugins/psmux-battery'
+set -g @plugin 'psmux-plugins/psmux-cpu'
+set -g @plugin 'psmux-plugins/psmux-logging'
+set -g @plugin 'psmux-plugins/psmux-sidebar'
+
+# --- Themes (uncomment ONE) ---
+# set -g @plugin 'psmux-plugins/psmux-theme-dracula'
+# set -g @plugin 'psmux-plugins/psmux-theme-catppuccin'
+# set -g @plugin 'psmux-plugins/psmux-theme-nord'
+# set -g @plugin 'psmux-plugins/psmux-theme-tokyonight'
+# set -g @plugin 'psmux-plugins/psmux-theme-gruvbox'
+
+# Initialize PPM (KEEP THIS LINE AT THE VERY BOTTOM)
+run '~/.psmux/plugins/ppm/ppm.ps1'
