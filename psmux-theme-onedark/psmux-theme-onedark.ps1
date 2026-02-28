@@ -1,16 +1,19 @@
 #!/usr/bin/env pwsh
 # =============================================================================
-# psmux-theme-onedark - One Dark color theme for psmux
+# psmux-theme-onedark - One Dark color theme for psmux (Enhanced)
 # =============================================================================
 #
-# Inspired by Atom's iconic One Dark theme.
-# Clean, modern dark theme with vibrant accent colors.
+# Inspired by Atom's One Dark syntax theme.
+# https://github.com/joshdick/onedark.vim
 #
 # Options:
 #   set -g @onedark-show-powerline 'on'
-#   set -g @onedark-separator 'arrow'       # arrow|rounded|slant
+#   set -g @onedark-separator 'arrow'         # arrow|rounded|slant
 #   set -g @onedark-show-icons 'on'
 #   set -g @onedark-show-user 'on'
+#   set -g @onedark-show-zoom 'on'
+#   set -g @onedark-show-sync 'on'
+#   set -g @onedark-show-pane-count 'on'
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'
@@ -36,87 +39,75 @@ $showPowerline = Get-Opt '@onedark-show-powerline' 'on'
 $separator     = Get-Opt '@onedark-separator' 'arrow'
 $showIcons     = Get-Opt '@onedark-show-icons' 'on'
 $showUser      = Get-Opt '@onedark-show-user' 'on'
+$showZoom      = Get-Opt '@onedark-show-zoom' 'on'
+$showSync      = Get-Opt '@onedark-show-sync' 'on'
+$showPanes     = Get-Opt '@onedark-show-pane-count' 'on'
 
-# --- One Dark palette ---
-$p = @{
-    bg        = '#282c34'
-    bg_light  = '#2c313a'
-    bg_lighter = '#3e4452'
-    gutter    = '#4b5263'
-    fg        = '#abb2bf'
-    comment   = '#5c6370'
-    red       = '#e06c75'
-    dark_red  = '#be5046'
-    green     = '#98c379'
-    yellow    = '#e5c07b'
-    dark_yellow = '#d19a66'
-    blue      = '#61afef'
-    magenta   = '#c678dd'
-    cyan      = '#56b6c2'
-}
+# Atom One Dark palette
+$black    = '#282C34'
+$bg1      = '#31353F'
+$bg2      = '#393F4A'
+$gutter   = '#4B5263'
+$comment  = '#5C6370'
+$fg       = '#ABB2BF'
+$white    = '#C8CCD4'
+$red      = '#E06C75'
+$green    = '#98C379'
+$yellow   = '#E5C07B'
+$blue     = '#61AFEF'
+$magenta  = '#C678DD'
+$cyan     = '#56B6C2'
+$orange   = '#D19A66'
 
-# --- Separators ---
 switch ($separator) {
-    'rounded' { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
-    'slant'   { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
-    default   { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
+    'rounded' { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    'slant'   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    default   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
 }
-if ($showPowerline -ne 'on') {
-    $sLR = ' '; $sRL = ' '; $wL = ' '; $wR = ' '
-}
+if ($showPowerline -ne 'on') { $sLR=' '; $sRL=' '; $wL=' '; $wR=' '; $wLT=' '; $wRT=' ' }
 
-# --- Icons ---
 if ($showIcons -eq 'on') {
-    $iSess = ' '; $iWin = ' '; $iClock = ' '
-    $iCal = '󰃭 '; $iUser = ' '; $iPrefix = '󰌌 '
-} else {
-    $iSess = ''; $iWin = ''; $iClock = ''
-    $iCal = ''; $iUser = ''; $iPrefix = ''
-}
+    $iSess=' '; $iWin=' '; $iClock=' '
+    $iCal='󰃭 '; $iUser=' '; $iPfx='󰌌 '
+} else { $iSess=''; $iWin=''; $iClock=''; $iCal=''; $iUser=''; $iPfx='' }
 
-# =============================================================================
-# APPLY THEME
-# =============================================================================
+$zoomInd = if ($showZoom -eq 'on') { "#{?window_zoomed_flag,#[fg=${yellow}] 󰁌 ,}" } else { '' }
+$syncInd = if ($showSync -eq 'on') { "#{?pane_synchronized,#[fg=${orange}]#[bg=${black}]${sRL}#[bg=${orange}]#[fg=${black},bold] 󰓦 SYNC #[fg=${orange}]#[bg=${black}]${sLR},}" } else { '' }
+$paneCount = if ($showPanes -eq 'on') { "#{?#{e|>:#{window_panes}#,1},#[fg=${comment}]  #{window_panes},}" } else { '' }
 
 & $PSMUX set -g status on 2>&1 | Out-Null
 & $PSMUX set -g status-position bottom 2>&1 | Out-Null
 & $PSMUX set -g status-justify left 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
-& $PSMUX set -g status-style "bg=$($p.bg),fg=$($p.fg)" 2>&1 | Out-Null
+& $PSMUX set -g status-style "bg=${black},fg=${fg}" 2>&1 | Out-Null
+& $PSMUX set -g window-status-separator "" 2>&1 | Out-Null
 
-# --- Status left ---
-$left = "#[bg=$($p.blue),fg=$($p.bg),bold] ${iSess}#S "
-$left += "#[fg=$($p.blue),bg=$($p.bg_light)]${sLR}"
+# Status-left: session in blue
+$left = "#[bg=${blue},fg=${black},bold] ${iSess}#S #[fg=${blue},bg=${bg1}]${sLR}"
 if ($showUser -eq 'on') {
-    $left += "#[fg=$($p.fg),bg=$($p.bg_light)] ${iUser}#(whoami) "
-    $left += "#[fg=$($p.bg_light),bg=$($p.bg)]${sLR} "
-} else {
-    $left += "#[fg=$($p.bg_light),bg=$($p.bg)]${sLR} "
-}
+    $left += "#[fg=${fg},bg=${bg1}] ${iUser}#(whoami) #[fg=${bg1},bg=${black}]${sLR} "
+} else { $left += "#[fg=${bg1},bg=${black}]${sLR} " }
 & $PSMUX set -g status-left $left 2>&1 | Out-Null
 & $PSMUX set -g status-left-length 45 2>&1 | Out-Null
 
-# --- Status right ---
-$pfx = "#{?client_prefix,#[fg=$($p.red)]#[bg=$($p.bg)]${sRL}#[bg=$($p.red)]#[fg=$($p.bg),bold] ${iPrefix}PREF #[fg=$($p.red)]#[bg=$($p.bg)]${sLR},}"
-$right = "${pfx}"
-$right += "#[fg=$($p.bg_lighter),bg=$($p.bg)]${sRL}"
-$right += "#[fg=$($p.cyan),bg=$($p.bg_lighter)] ${iClock}%H:%M "
-$right += "#[fg=$($p.gutter),bg=$($p.bg_lighter)]${sRL}"
-$right += "#[fg=$($p.yellow),bg=$($p.gutter)] ${iCal}%a "
-$right += "#[fg=$($p.blue),bg=$($p.gutter)]${sRL}"
-$right += "#[fg=$($p.bg),bg=$($p.blue),bold] ${iCal}%d-%b "
+# Status-right: prefix + sync + clock + date
+$pfx = "#{?client_prefix,#[fg=${orange}]#[bg=${black}]${sRL}#[bg=${orange}]#[fg=${black},bold] ${iPfx}PREF #[fg=${orange}]#[bg=${black}]${sLR},}"
+$right = "${pfx}${syncInd}#[fg=${bg2},bg=${black}]${sRL}#[fg=${cyan},bg=${bg2}] ${iClock}%H:%M #[fg=${gutter},bg=${bg2}]${sRL}#[fg=${green},bg=${gutter}] ${iCal}%a #[fg=${blue},bg=${gutter}]${sRL}#[fg=${black},bg=${blue},bold] ${iCal}%d-%b "
 & $PSMUX set -g status-right $right 2>&1 | Out-Null
 & $PSMUX set -g status-right-length 80 2>&1 | Out-Null
 
-# --- Window tabs ---
-& $PSMUX set -g window-status-format "#[fg=$($p.bg_light),bg=$($p.bg)]${wL}#[fg=$($p.comment),bg=$($p.bg_light)] ${iWin}#I  #W #[fg=$($p.bg_light),bg=$($p.bg)]${wR}" 2>&1 | Out-Null
-& $PSMUX set -g window-status-current-format "#[fg=$($p.green),bg=$($p.bg)]${wL}#[fg=$($p.bg),bg=$($p.green),bold] ${iWin}#I  #W #[fg=$($p.green),bg=$($p.bg)]${wR}" 2>&1 | Out-Null
+# Inactive — thin separators
+& $PSMUX set -g window-status-format "#[fg=${bg1},bg=${black}]${wLT}#[fg=${comment},bg=${bg1}] ${iWin}#I  #W ${paneCount}#[fg=${bg1},bg=${black}]${wRT}" 2>&1 | Out-Null
+# Active — full powerline with green accent
+& $PSMUX set -g window-status-current-format "#[fg=${green},bg=${black}]${wL}#[fg=${black},bg=${green},bold] ${iWin}#I  #W ${zoomInd}${paneCount}#[fg=${green},bg=${black}]${wR}" 2>&1 | Out-Null
 
-& $PSMUX set -g window-status-activity-style "fg=$($p.dark_yellow),bg=$($p.bg)" 2>&1 | Out-Null
-& $PSMUX set -g pane-active-border-style "fg=$($p.blue)" 2>&1 | Out-Null
-& $PSMUX set -g pane-border-style "fg=$($p.bg_lighter)" 2>&1 | Out-Null
-& $PSMUX set -g message-style "bg=$($p.bg_light),fg=$($p.fg)" 2>&1 | Out-Null
-& $PSMUX set -g message-command-style "bg=$($p.bg_light),fg=$($p.fg)" 2>&1 | Out-Null
-& $PSMUX set -g mode-style "bg=$($p.blue),fg=$($p.bg)" 2>&1 | Out-Null
+& $PSMUX set -g window-status-last-style "underscore" 2>&1 | Out-Null
+& $PSMUX set -g window-status-activity-style "fg=${orange},bg=${black},bold" 2>&1 | Out-Null
+& $PSMUX set -g window-status-bell-style "fg=${red},bg=${black},bold" 2>&1 | Out-Null
+& $PSMUX set -g pane-active-border-style "fg=${blue}" 2>&1 | Out-Null
+& $PSMUX set -g pane-border-style "fg=${bg2}" 2>&1 | Out-Null
+& $PSMUX set -g message-style "bg=${bg1},fg=${fg}" 2>&1 | Out-Null
+& $PSMUX set -g message-command-style "bg=${bg1},fg=${fg}" 2>&1 | Out-Null
+& $PSMUX set -g mode-style "bg=${blue},fg=${black}" 2>&1 | Out-Null
 
 Write-Host "psmux-theme-onedark: loaded (sep=$separator)" -ForegroundColor DarkGray

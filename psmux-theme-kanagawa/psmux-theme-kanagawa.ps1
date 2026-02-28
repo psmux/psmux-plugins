@@ -1,20 +1,20 @@
 #!/usr/bin/env pwsh
 # =============================================================================
-# psmux-theme-kanagawa - Kanagawa color theme for psmux
-# Inspired by the famous painting "The Great Wave off Kanagawa"
+# psmux-theme-kanagawa - Kanagawa color theme for psmux (Enhanced)
 # =============================================================================
 #
-# A dark theme inspired by the colors of Katsushika Hokusai's artwork.
+# Inspired by the colors of the famous painting by Katsushika Hokusai.
 # https://github.com/rebelot/kanagawa.nvim
 #
-# Variants: wave (default), dragon, lotus
-#
 # Options:
-#   set -g @kanagawa-variant 'wave'          # wave|dragon|lotus
-#   set -g @kanagawa-show-powerline 'on'     # powerline arrows
-#   set -g @kanagawa-separator 'arrow'       # arrow|rounded|slant
-#   set -g @kanagawa-show-icons 'on'         # nerd font icons
-#   set -g @kanagawa-show-user 'on'          # username in left segment
+#   set -g @kanagawa-variant 'wave'           # wave|dragon|lotus
+#   set -g @kanagawa-show-powerline 'on'
+#   set -g @kanagawa-separator 'arrow'         # arrow|rounded|slant
+#   set -g @kanagawa-show-icons 'on'
+#   set -g @kanagawa-show-user 'off'
+#   set -g @kanagawa-show-zoom 'on'
+#   set -g @kanagawa-show-sync 'on'
+#   set -g @kanagawa-show-pane-count 'on'
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'
@@ -40,110 +40,69 @@ $variant       = Get-Opt '@kanagawa-variant' 'wave'
 $showPowerline = Get-Opt '@kanagawa-show-powerline' 'on'
 $separator     = Get-Opt '@kanagawa-separator' 'arrow'
 $showIcons     = Get-Opt '@kanagawa-show-icons' 'on'
-$showUser      = Get-Opt '@kanagawa-show-user' 'on'
+$showUser      = Get-Opt '@kanagawa-show-user' 'off'
+$showZoom      = Get-Opt '@kanagawa-show-zoom' 'on'
+$showSync      = Get-Opt '@kanagawa-show-sync' 'on'
+$showPanes     = Get-Opt '@kanagawa-show-pane-count' 'on'
 
-# --- Palettes ---
 $palettes = @{
-    wave = @{
-        bg='#1f1f28'; bg_dark='#16161d'; bg_light='#2a2a37'
-        fg='#dcd7ba'; fg_dark='#c8c093'; fg_comment='#727169'
-        wave1='#223249'; wave2='#2d4f67'
-        samurai='#e82424'; autumn_red='#e46876'; autumn_yellow='#dca561'
-        spring_blue='#7fb4ca'; spring_green='#98bb6c'; spring_violet='#9cabca'
-        crystal='#7e9cd8'; surimi='#ffa066'; fuji_gray='#54546d'
-        sakura='#d27e99'; carp='#e6c384'; dragon_blue='#658594'
-    }
-    dragon = @{
-        bg='#181616'; bg_dark='#0d0c0c'; bg_light='#282727'
-        fg='#c5c9c5'; fg_dark='#a6a69c'; fg_comment='#625e5a'
-        wave1='#12120f'; wave2='#282727'
-        samurai='#c4746e'; autumn_red='#c4746e'; autumn_yellow='#c4b28a'
-        spring_blue='#8ba4b0'; spring_green='#87a987'; spring_violet='#8992a7'
-        crystal='#8ba4b0'; surimi='#b6927b'; fuji_gray='#4c4b4b'
-        sakura='#a292a3'; carp='#c4b28a'; dragon_blue='#658594'
-    }
-    lotus = @{
-        bg='#f2ecbc'; bg_dark='#e5ddb0'; bg_light='#f9f3c7'
-        fg='#545464'; fg_dark='#43436c'; fg_comment='#8a8980'
-        wave1='#e5ddb0'; wave2='#d7d0a5'
-        samurai='#c84053'; autumn_red='#d7474b'; autumn_yellow='#cc6d00'
-        spring_blue='#6693bf'; spring_green='#6f894e'; spring_violet='#624c83'
-        crystal='#5d57a3'; surimi='#cc6d00'; fuji_gray='#b5b4a7'
-        sakura='#b35b79'; carp='#77713f'; dragon_blue='#5a7785'
-    }
+    'wave'   = @{ sumiInk0='#16161D'; sumiInk1='#1F1F28'; sumiInk2='#2A2A37'; sumiInk3='#363646'; sumiInk4='#54546D'; fujiWhite='#DCD7BA'; oldWhite='#C8C093'; fujiGray='#727169'; crystalBlue='#7E9CD8'; springBlue='#7FB4CA'; springGreen='#98BB6C'; surimiOrange='#FFA066'; autumnRed='#C34043'; sakuraPink='#D27E99'; oniViolet='#957FB8'; waveAqua='#6A9589'; roninYellow='#FF9E3B'; carpYellow='#E6C384' }
+    'dragon' = @{ sumiInk0='#0D0C0C'; sumiInk1='#12120F'; sumiInk2='#1D1C19'; sumiInk3='#282727'; sumiInk4='#625E5A'; fujiWhite='#C5C9C5'; oldWhite='#A6A69C'; fujiGray='#737C73'; crystalBlue='#658594'; springBlue='#8BA4B0'; springGreen='#87A987'; surimiOrange='#B6927B'; autumnRed='#C4746E'; sakuraPink='#A292A3'; oniViolet='#8992A7'; waveAqua='#8EA4A2'; roninYellow='#FF9E3B'; carpYellow='#E6C384' }
+    'lotus'  = @{ sumiInk0='#F2ECBC'; sumiInk1='#E5DDB0'; sumiInk2='#D7D0A4'; sumiInk3='#C9C295'; sumiInk4='#8A8980'; fujiWhite='#43436C'; oldWhite='#545464'; fujiGray='#8A8980'; crystalBlue='#4D699B'; springBlue='#6693BF'; springGreen='#6F894E'; surimiOrange='#CC6D00'; autumnRed='#C84053'; sakuraPink='#B35B79'; oniViolet='#624C83'; waveAqua='#597B75'; roninYellow='#DCA561'; carpYellow='#77713F' }
 }
 
 $p = $palettes[$variant]
 if (-not $p) { $p = $palettes['wave'] }
 
-# --- Separators ---
 switch ($separator) {
-    'rounded' { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
-    'slant'   { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
-    default   { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
+    'rounded' { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    'slant'   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    default   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
 }
+if ($showPowerline -ne 'on') { $sLR=' '; $sRL=' '; $wL=' '; $wR=' '; $wLT=' '; $wRT=' ' }
 
-if ($showPowerline -ne 'on') {
-    $sLR = ' '; $sRL = ' '; $wL = ' '; $wR = ' '
-}
-
-# --- Icons ---
 if ($showIcons -eq 'on') {
-    $iSess  = '󰊠 '; $iWin = ' '; $iClock = ' '
-    $iCal   = '󰃭 '; $iUser = ' '; $iPrefix = '󰌌 '
-} else {
-    $iSess = ''; $iWin = ''; $iClock = ''
-    $iCal = ''; $iUser = ''; $iPrefix = ''
-}
+    $iSess='󰊠 '; $iWin=' '; $iClock=' '
+    $iCal='󰃭 '; $iUser=' '; $iPfx='󰌌 '
+} else { $iSess=''; $iWin=''; $iClock=''; $iCal=''; $iUser=''; $iPfx='' }
 
-# =============================================================================
-# APPLY THEME
-# =============================================================================
+$zoomInd = if ($showZoom -eq 'on') { "#{?window_zoomed_flag,#[fg=$($p.roninYellow)] 󰁌 ,}" } else { '' }
+$syncInd = if ($showSync -eq 'on') { "#{?pane_synchronized,#[fg=$($p.surimiOrange)]#[bg=$($p.sumiInk1)]${sRL}#[bg=$($p.surimiOrange)]#[fg=$($p.sumiInk0),bold] 󰓦 SYNC #[fg=$($p.surimiOrange)]#[bg=$($p.sumiInk1)]${sLR},}" } else { '' }
+$paneCount = if ($showPanes -eq 'on') { "#{?#{e|>:#{window_panes}#,1},#[fg=$($p.fujiGray)]  #{window_panes},}" } else { '' }
 
 & $PSMUX set -g status on 2>&1 | Out-Null
 & $PSMUX set -g status-position bottom 2>&1 | Out-Null
 & $PSMUX set -g status-justify left 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
-& $PSMUX set -g status-style "bg=$($p.bg),fg=$($p.fg)" 2>&1 | Out-Null
+& $PSMUX set -g status-style "bg=$($p.sumiInk1),fg=$($p.fujiWhite)" 2>&1 | Out-Null
+& $PSMUX set -g window-status-separator "" 2>&1 | Out-Null
 
-# --- Status left ---
-$left = "#[bg=$($p.crystal),fg=$($p.bg),bold] ${iSess}#S "
-$left += "#[fg=$($p.crystal),bg=$($p.wave1)]${sLR}"
-
+# Status-left: session + optional user
+$left = "#[bg=$($p.crystalBlue),fg=$($p.sumiInk0),bold] ${iSess}#S #[fg=$($p.crystalBlue),bg=$($p.sumiInk2)]${sLR}"
 if ($showUser -eq 'on') {
-    $left += "#[fg=$($p.fg_dark),bg=$($p.wave1)] ${iUser}#(whoami) "
-    $left += "#[fg=$($p.wave1),bg=$($p.bg)]${sLR} "
-} else {
-    $left += "#[fg=$($p.wave1),bg=$($p.bg)]${sLR} "
-}
-
+    $left += "#[fg=$($p.oldWhite),bg=$($p.sumiInk2)] ${iUser}#(whoami) #[fg=$($p.sumiInk2),bg=$($p.sumiInk1)]${sLR} "
+} else { $left += "#[fg=$($p.sumiInk2),bg=$($p.sumiInk1)]${sLR} " }
 & $PSMUX set -g status-left $left 2>&1 | Out-Null
 & $PSMUX set -g status-left-length 45 2>&1 | Out-Null
 
-# --- Status right ---
-$pfx = "#{?client_prefix,#[fg=$($p.samurai)]#[bg=$($p.bg)]${sRL}#[bg=$($p.samurai)]#[fg=$($p.bg),bold] ${iPrefix}PREF #[fg=$($p.samurai)]#[bg=$($p.bg)]${sLR},}"
-
-$right = "${pfx}"
-$right += "#[fg=$($p.wave1),bg=$($p.bg)]${sRL}"
-$right += "#[fg=$($p.spring_green),bg=$($p.wave1)] ${iClock}%H:%M "
-$right += "#[fg=$($p.wave2),bg=$($p.wave1)]${sRL}"
-$right += "#[fg=$($p.autumn_yellow),bg=$($p.wave2)] ${iCal}%a "
-$right += "#[fg=$($p.crystal),bg=$($p.wave2)]${sRL}"
-$right += "#[fg=$($p.bg),bg=$($p.crystal),bold] ${iCal}%d-%b "
-
+# Status-right: prefix + sync + clock + date
+$pfx = "#{?client_prefix,#[fg=$($p.roninYellow)]#[bg=$($p.sumiInk1)]${sRL}#[bg=$($p.roninYellow)]#[fg=$($p.sumiInk0),bold] ${iPfx}PREF #[fg=$($p.roninYellow)]#[bg=$($p.sumiInk1)]${sLR},}"
+$right = "${pfx}${syncInd}#[fg=$($p.sumiInk3),bg=$($p.sumiInk1)]${sRL}#[fg=$($p.waveAqua),bg=$($p.sumiInk3)] ${iClock}%H:%M #[fg=$($p.sumiInk4),bg=$($p.sumiInk3)]${sRL}#[fg=$($p.springBlue),bg=$($p.sumiInk4)] ${iCal}%a #[fg=$($p.crystalBlue),bg=$($p.sumiInk4)]${sRL}#[fg=$($p.sumiInk0),bg=$($p.crystalBlue),bold] ${iCal}%d-%b "
 & $PSMUX set -g status-right $right 2>&1 | Out-Null
 & $PSMUX set -g status-right-length 80 2>&1 | Out-Null
 
-# --- Window tabs ---
-& $PSMUX set -g window-status-format "#[fg=$($p.wave1),bg=$($p.bg)]${wL}#[fg=$($p.fg_comment),bg=$($p.wave1)] ${iWin}#I  #W #[fg=$($p.wave1),bg=$($p.bg)]${wR}" 2>&1 | Out-Null
-& $PSMUX set -g window-status-current-format "#[fg=$($p.spring_green),bg=$($p.bg)]${wL}#[fg=$($p.bg),bg=$($p.spring_green),bold] ${iWin}#I  #W #[fg=$($p.spring_green),bg=$($p.bg)]${wR}" 2>&1 | Out-Null
+# Inactive — thin separators, muted
+& $PSMUX set -g window-status-format "#[fg=$($p.sumiInk2),bg=$($p.sumiInk1)]${wLT}#[fg=$($p.fujiGray),bg=$($p.sumiInk2)] ${iWin}#I  #W ${paneCount}#[fg=$($p.sumiInk2),bg=$($p.sumiInk1)]${wRT}" 2>&1 | Out-Null
+# Active — full powerline, vibrant
+& $PSMUX set -g window-status-current-format "#[fg=$($p.springGreen),bg=$($p.sumiInk1)]${wL}#[fg=$($p.sumiInk0),bg=$($p.springGreen),bold] ${iWin}#I  #W ${zoomInd}${paneCount}#[fg=$($p.springGreen),bg=$($p.sumiInk1)]${wR}" 2>&1 | Out-Null
 
-# Activity, borders, messages
-& $PSMUX set -g window-status-activity-style "fg=$($p.surimi),bg=$($p.bg)" 2>&1 | Out-Null
-& $PSMUX set -g pane-active-border-style "fg=$($p.crystal)" 2>&1 | Out-Null
-& $PSMUX set -g pane-border-style "fg=$($p.wave1)" 2>&1 | Out-Null
-& $PSMUX set -g message-style "bg=$($p.wave1),fg=$($p.fg)" 2>&1 | Out-Null
-& $PSMUX set -g message-command-style "bg=$($p.wave1),fg=$($p.fg)" 2>&1 | Out-Null
-& $PSMUX set -g mode-style "bg=$($p.wave2),fg=$($p.fg)" 2>&1 | Out-Null
+& $PSMUX set -g window-status-last-style "underscore" 2>&1 | Out-Null
+& $PSMUX set -g window-status-activity-style "fg=$($p.surimiOrange),bg=$($p.sumiInk1),bold" 2>&1 | Out-Null
+& $PSMUX set -g window-status-bell-style "fg=$($p.autumnRed),bg=$($p.sumiInk1),bold" 2>&1 | Out-Null
+& $PSMUX set -g pane-active-border-style "fg=$($p.crystalBlue)" 2>&1 | Out-Null
+& $PSMUX set -g pane-border-style "fg=$($p.sumiInk3)" 2>&1 | Out-Null
+& $PSMUX set -g message-style "bg=$($p.sumiInk2),fg=$($p.fujiWhite)" 2>&1 | Out-Null
+& $PSMUX set -g message-command-style "bg=$($p.sumiInk2),fg=$($p.fujiWhite)" 2>&1 | Out-Null
+& $PSMUX set -g mode-style "bg=$($p.oniViolet),fg=$($p.sumiInk0)" 2>&1 | Out-Null
 
 Write-Host "psmux-theme-kanagawa: loaded ($variant, sep=$separator)" -ForegroundColor DarkGray

@@ -7,9 +7,6 @@
 # Inspired by nature — green tones that are easy on the eyes.
 # https://github.com/sainnhe/everforest
 #
-# Variants: dark (default), light
-# Contrast: soft, medium (default), hard
-#
 # Options:
 #   set -g @everforest-variant 'dark'         # dark|light
 #   set -g @everforest-contrast 'medium'      # soft|medium|hard
@@ -17,6 +14,9 @@
 #   set -g @everforest-separator 'arrow'      # arrow|rounded|slant
 #   set -g @everforest-show-icons 'on'
 #   set -g @everforest-show-user 'on'
+#   set -g @everforest-show-zoom 'on'         # zoom indicator
+#   set -g @everforest-show-sync 'on'         # sync indicator
+#   set -g @everforest-show-pane-count 'on'   # pane count badge
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'
@@ -44,6 +44,9 @@ $showPowerline = Get-Opt '@everforest-show-powerline' 'on'
 $separator     = Get-Opt '@everforest-separator' 'arrow'
 $showIcons     = Get-Opt '@everforest-show-icons' 'on'
 $showUser      = Get-Opt '@everforest-show-user' 'on'
+$showZoom      = Get-Opt '@everforest-show-zoom' 'on'
+$showSync      = Get-Opt '@everforest-show-sync' 'on'
+$showPanes     = Get-Opt '@everforest-show-pane-count' 'on'
 
 # --- Palettes ---
 $palettes = @{
@@ -89,65 +92,55 @@ $key = "$variant-$contrast"
 $p = $palettes[$key]
 if (-not $p) { $p = $palettes['dark-medium'] }
 
-# --- Separators ---
 switch ($separator) {
-    'rounded' { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
-    'slant'   { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
-    default   { $sLR = ''; $sRL = ''; $wL = ''; $wR = '' }
+    'rounded' { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    'slant'   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    default   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
 }
+if ($showPowerline -ne 'on') { $sLR=' '; $sRL=' '; $wL=' '; $wR=' '; $wLT=' '; $wRT=' ' }
 
-if ($showPowerline -ne 'on') {
-    $sLR = ' '; $sRL = ' '; $wL = ' '; $wR = ' '
-}
-
-# --- Icons ---
 if ($showIcons -eq 'on') {
-    $iSess = '󰔱 '; $iWin = ' '; $iClock = ' '
-    $iCal = '󰃭 '; $iUser = ' '; $iPrefix = '󰌌 '
-} else {
-    $iSess = ''; $iWin = ''; $iClock = ''
-    $iCal = ''; $iUser = ''; $iPrefix = ''
-}
+    $iSess='󰔱 '; $iWin=' '; $iClock=' '
+    $iCal='󰃭 '; $iUser=' '; $iPrefix='󰌌 '
+} else { $iSess=''; $iWin=''; $iClock=''; $iCal=''; $iUser=''; $iPrefix='' }
 
-# =============================================================================
-# APPLY THEME
-# =============================================================================
+# Status indicators
+$zoomInd = if ($showZoom -eq 'on') { "#{?window_zoomed_flag,#[fg=$($p.yellow)] 󰁌 ,}" } else { '' }
+$syncInd = if ($showSync -eq 'on') { "#{?pane_synchronized,#[fg=$($p.red)]#[bg=$($p.bg0)]${sRL}#[bg=$($p.red)]#[fg=$($p.bg0),bold] 󰓦 SYNC #[fg=$($p.red)]#[bg=$($p.bg0)]${sLR},}" } else { '' }
+$paneCount = if ($showPanes -eq 'on') { "#{?#{e|>:#{window_panes}#,1},#[fg=$($p.gray)]  #{window_panes},}" } else { '' }
 
 & $PSMUX set -g status on 2>&1 | Out-Null
 & $PSMUX set -g status-position bottom 2>&1 | Out-Null
 & $PSMUX set -g status-justify left 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
 & $PSMUX set -g status-style "bg=$($p.bg0),fg=$($p.fg)" 2>&1 | Out-Null
+& $PSMUX set -g window-status-separator "" 2>&1 | Out-Null
 
-# --- Status left ---
 $left = "#[bg=$($p.green),fg=$($p.bg0),bold] ${iSess}#S "
 $left += "#[fg=$($p.green),bg=$($p.bg1)]${sLR}"
 if ($showUser -eq 'on') {
     $left += "#[fg=$($p.gray2),bg=$($p.bg1)] ${iUser}#(whoami) "
     $left += "#[fg=$($p.bg1),bg=$($p.bg0)]${sLR} "
-} else {
-    $left += "#[fg=$($p.bg1),bg=$($p.bg0)]${sLR} "
-}
+} else { $left += "#[fg=$($p.bg1),bg=$($p.bg0)]${sLR} " }
 & $PSMUX set -g status-left $left 2>&1 | Out-Null
 & $PSMUX set -g status-left-length 45 2>&1 | Out-Null
 
-# --- Status right ---
 $pfx = "#{?client_prefix,#[fg=$($p.red)]#[bg=$($p.bg0)]${sRL}#[bg=$($p.red)]#[fg=$($p.bg0),bold] ${iPrefix}PREF #[fg=$($p.red)]#[bg=$($p.bg0)]${sLR},}"
-$right = "${pfx}"
-$right += "#[fg=$($p.bg2),bg=$($p.bg0)]${sRL}"
-$right += "#[fg=$($p.blue),bg=$($p.bg2)] ${iClock}%H:%M "
-$right += "#[fg=$($p.bg3),bg=$($p.bg2)]${sRL}"
-$right += "#[fg=$($p.yellow),bg=$($p.bg3)] ${iCal}%a "
-$right += "#[fg=$($p.green),bg=$($p.bg3)]${sRL}"
-$right += "#[fg=$($p.bg0),bg=$($p.green),bold] ${iCal}%d-%b "
+$right = "${pfx}${syncInd}"
+$right += "#[fg=$($p.bg2),bg=$($p.bg0)]${sRL}#[fg=$($p.blue),bg=$($p.bg2)] ${iClock}%H:%M "
+$right += "#[fg=$($p.bg3),bg=$($p.bg2)]${sRL}#[fg=$($p.yellow),bg=$($p.bg3)] ${iCal}%a "
+$right += "#[fg=$($p.green),bg=$($p.bg3)]${sRL}#[fg=$($p.bg0),bg=$($p.green),bold] ${iCal}%d-%b "
 & $PSMUX set -g status-right $right 2>&1 | Out-Null
 & $PSMUX set -g status-right-length 80 2>&1 | Out-Null
 
-# --- Window tabs ---
-& $PSMUX set -g window-status-format "#[fg=$($p.bg1),bg=$($p.bg0)]${wL}#[fg=$($p.gray),bg=$($p.bg1)] ${iWin}#I  #W #[fg=$($p.bg1),bg=$($p.bg0)]${wR}" 2>&1 | Out-Null
-& $PSMUX set -g window-status-current-format "#[fg=$($p.aqua),bg=$($p.bg0)]${wL}#[fg=$($p.bg0),bg=$($p.aqua),bold] ${iWin}#I  #W #[fg=$($p.aqua),bg=$($p.bg0)]${wR}" 2>&1 | Out-Null
+# Inactive: thin separators
+& $PSMUX set -g window-status-format "#[fg=$($p.bg1),bg=$($p.bg0)]${wLT}#[fg=$($p.gray),bg=$($p.bg1)] ${iWin}#I  #W ${paneCount}#[fg=$($p.bg1),bg=$($p.bg0)]${wRT}" 2>&1 | Out-Null
+# Active: full powerline + indicators
+& $PSMUX set -g window-status-current-format "#[fg=$($p.aqua),bg=$($p.bg0)]${wL}#[fg=$($p.bg0),bg=$($p.aqua),bold] ${iWin}#I  #W ${zoomInd}${paneCount}#[fg=$($p.aqua),bg=$($p.bg0)]${wR}" 2>&1 | Out-Null
 
-& $PSMUX set -g window-status-activity-style "fg=$($p.orange),bg=$($p.bg0)" 2>&1 | Out-Null
+& $PSMUX set -g window-status-last-style "underscore" 2>&1 | Out-Null
+& $PSMUX set -g window-status-activity-style "fg=$($p.orange),bg=$($p.bg0),bold" 2>&1 | Out-Null
+& $PSMUX set -g window-status-bell-style "fg=$($p.red),bg=$($p.bg0),bold" 2>&1 | Out-Null
 & $PSMUX set -g pane-active-border-style "fg=$($p.green)" 2>&1 | Out-Null
 & $PSMUX set -g pane-border-style "fg=$($p.bg1)" 2>&1 | Out-Null
 & $PSMUX set -g message-style "bg=$($p.bg1),fg=$($p.fg)" 2>&1 | Out-Null

@@ -8,9 +8,12 @@
 #
 # Options:
 #   set -g @nord-show-powerline 'on'
-#   set -g @nord-separator 'arrow'          # arrow|rounded|slant
+#   set -g @nord-separator 'arrow'            # arrow|rounded|slant
 #   set -g @nord-show-icons 'on'
 #   set -g @nord-show-user 'on'
+#   set -g @nord-show-zoom 'on'
+#   set -g @nord-show-sync 'on'
+#   set -g @nord-show-pane-count 'on'
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'
@@ -36,51 +39,77 @@ $showPowerline = Get-Opt '@nord-show-powerline' 'on'
 $separator     = Get-Opt '@nord-separator' 'arrow'
 $showIcons     = Get-Opt '@nord-show-icons' 'on'
 $showUser      = Get-Opt '@nord-show-user' 'on'
+$showZoom      = Get-Opt '@nord-show-zoom' 'on'
+$showSync      = Get-Opt '@nord-show-sync' 'on'
+$showPanes     = Get-Opt '@nord-show-pane-count' 'on'
 
 # Nord palette
-$n0='#2e3440'; $n1='#3b4252'; $n2='#434c5e'; $n3='#4c566a'
-$n4='#d8dee9'; $n5='#e5e9f0'; $n6='#eceff4'
-$n7='#8fbcbb'; $n8='#88c0d0'; $n9='#81a1c1'; $n10='#5e81ac'
-$n11='#bf616a'; $n12='#d08770'; $n13='#ebcb8b'; $n14='#a3be8c'; $n15='#b48ead'
+$n0  = '#2E3440'    # Polar Night 0
+$n1  = '#3B4252'    # Polar Night 1
+$n2  = '#434C5E'    # Polar Night 2
+$n3  = '#4C566A'    # Polar Night 3
+$n4  = '#D8DEE9'    # Snow Storm 0
+$n5  = '#E5E9F0'    # Snow Storm 1
+$n6  = '#ECEFF4'    # Snow Storm 2
+$n7  = '#8FBCBB'    # Frost - frozen water
+$n8  = '#88C0D0'    # Frost - clear ice
+$n9  = '#81A1C1'    # Frost - arctic ocean
+$n10 = '#5E81AC'    # Frost - deep arctic
+$n11 = '#BF616A'    # Aurora - red
+$n12 = '#D08770'    # Aurora - orange
+$n13 = '#EBCB8B'    # Aurora - yellow
+$n14 = '#A3BE8C'    # Aurora - green
+$n15 = '#B48EAD'    # Aurora - purple
 
 switch ($separator) {
-    'rounded' { $sLR=''; $sRL=''; $wL=''; $wR='' }
-    'slant'   { $sLR=''; $sRL=''; $wL=''; $wR='' }
-    default   { $sLR=''; $sRL=''; $wL=''; $wR='' }
+    'rounded' { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    'slant'   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
+    default   { $sLR=''; $sRL=''; $wL=''; $wR=''; $wLT=''; $wRT='' }
 }
-if ($showPowerline -ne 'on') { $sLR=' '; $sRL=' '; $wL=' '; $wR=' ' }
+if ($showPowerline -ne 'on') { $sLR=' '; $sRL=' '; $wL=' '; $wR=' '; $wLT=' '; $wRT=' ' }
 
 if ($showIcons -eq 'on') {
     $iSess=' '; $iWin=' '; $iClock=' '
-    $iCal='󰃭 '; $iUser=' '; $iPfx='󰌌 '
+    $iCal='󰃶 '; $iUser=' '; $iPfx='󰌌 '
 } else { $iSess=''; $iWin=''; $iClock=''; $iCal=''; $iUser=''; $iPfx='' }
+
+$zoomInd = if ($showZoom -eq 'on') { "#{?window_zoomed_flag,#[fg=${n13}] 󰁌 ,}" } else { '' }
+$syncInd = if ($showSync -eq 'on') { "#{?pane_synchronized,#[fg=${n12}]#[bg=${n0}]${sRL}#[bg=${n12}]#[fg=${n0},bold] 󰓦 SYNC #[fg=${n12}]#[bg=${n0}]${sLR},}" } else { '' }
+$paneCount = if ($showPanes -eq 'on') { "#{?#{e|>:#{window_panes}#,1},#[fg=${n3}]  #{window_panes},}" } else { '' }
 
 & $PSMUX set -g status on 2>&1 | Out-Null
 & $PSMUX set -g status-position bottom 2>&1 | Out-Null
 & $PSMUX set -g status-justify left 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
-& $PSMUX set -g status-style "bg=$n1,fg=$n4" 2>&1 | Out-Null
+& $PSMUX set -g status-style "bg=${n0},fg=${n4}" 2>&1 | Out-Null
+& $PSMUX set -g window-status-separator "" 2>&1 | Out-Null
 
-$left = "#[bg=$n9,fg=$n0,bold] ${iSess}#S #[fg=$n9,bg=$n2]${sLR}"
+# Status-left: session accent in frost blue
+$left = "#[bg=${n10},fg=${n6},bold] ${iSess}#S #[fg=${n10},bg=${n1}]${sLR}"
 if ($showUser -eq 'on') {
-    $left += "#[fg=$n4,bg=$n2] ${iUser}#(whoami) #[fg=$n2,bg=$n1]${sLR} "
-} else { $left += "#[fg=$n2,bg=$n1]${sLR} " }
+    $left += "#[fg=${n4},bg=${n1}] ${iUser}#(whoami) #[fg=${n1},bg=${n0}]${sLR} "
+} else { $left += "#[fg=${n1},bg=${n0}]${sLR} " }
 & $PSMUX set -g status-left $left 2>&1 | Out-Null
 & $PSMUX set -g status-left-length 45 2>&1 | Out-Null
 
-$pfx = "#{?client_prefix,#[fg=$n13]#[bg=$n1]${sRL}#[bg=$n13]#[fg=$n0,bold] ${iPfx}WAIT #[fg=$n13]#[bg=$n1]${sLR},}"
-$right = "${pfx}#[fg=$n3,bg=$n1]${sRL}#[fg=$n7,bg=$n3] ${iClock}%H:%M #[fg=$n2,bg=$n3]${sRL}#[fg=$n13,bg=$n2] ${iCal}%a #[fg=$n10,bg=$n2]${sRL}#[fg=$n6,bg=$n10,bold] ${iCal}%d-%b "
+# Status-right: prefix + sync + clock + date
+$pfx = "#{?client_prefix,#[fg=${n12}]#[bg=${n0}]${sRL}#[bg=${n12}]#[fg=${n0},bold] ${iPfx}PREF #[fg=${n12}]#[bg=${n0}]${sLR},}"
+$right = "${pfx}${syncInd}#[fg=${n2},bg=${n0}]${sRL}#[fg=${n7},bg=${n2}] ${iClock}%H:%M #[fg=${n3},bg=${n2}]${sRL}#[fg=${n8},bg=${n3}] ${iCal}%a #[fg=${n10},bg=${n3}]${sRL}#[fg=${n6},bg=${n10},bold] ${iCal}%d-%b "
 & $PSMUX set -g status-right $right 2>&1 | Out-Null
 & $PSMUX set -g status-right-length 80 2>&1 | Out-Null
 
-& $PSMUX set -g window-status-format "#[fg=$n3,bg=$n1]${wL}#[fg=$n4,bg=$n3] ${iWin}#I  #W #[fg=$n3,bg=$n1]${wR}" 2>&1 | Out-Null
-& $PSMUX set -g window-status-current-format "#[fg=$n8,bg=$n1]${wL}#[fg=$n0,bg=$n8,bold] ${iWin}#I  #W #[fg=$n8,bg=$n1]${wR}" 2>&1 | Out-Null
+# Inactive — thin separators
+& $PSMUX set -g window-status-format "#[fg=${n1},bg=${n0}]${wLT}#[fg=${n3},bg=${n1}] ${iWin}#I  #W ${paneCount}#[fg=${n1},bg=${n0}]${wRT}" 2>&1 | Out-Null
+# Active — full powerline with aurora green
+& $PSMUX set -g window-status-current-format "#[fg=${n9},bg=${n0}]${wL}#[fg=${n0},bg=${n9},bold] ${iWin}#I  #W ${zoomInd}${paneCount}#[fg=${n9},bg=${n0}]${wR}" 2>&1 | Out-Null
 
-& $PSMUX set -g window-status-activity-style "fg=$n13,bg=$n1" 2>&1 | Out-Null
-& $PSMUX set -g pane-active-border-style "fg=$n8" 2>&1 | Out-Null
-& $PSMUX set -g pane-border-style "fg=$n2" 2>&1 | Out-Null
-& $PSMUX set -g message-style "bg=$n2,fg=$n4" 2>&1 | Out-Null
-& $PSMUX set -g message-command-style "bg=$n2,fg=$n4" 2>&1 | Out-Null
-& $PSMUX set -g mode-style "bg=$n9,fg=$n0" 2>&1 | Out-Null
+& $PSMUX set -g window-status-last-style "underscore" 2>&1 | Out-Null
+& $PSMUX set -g window-status-activity-style "fg=${n12},bg=${n0},bold" 2>&1 | Out-Null
+& $PSMUX set -g window-status-bell-style "fg=${n11},bg=${n0},bold" 2>&1 | Out-Null
+& $PSMUX set -g pane-active-border-style "fg=${n8}" 2>&1 | Out-Null
+& $PSMUX set -g pane-border-style "fg=${n1}" 2>&1 | Out-Null
+& $PSMUX set -g message-style "bg=${n1},fg=${n4}" 2>&1 | Out-Null
+& $PSMUX set -g message-command-style "bg=${n1},fg=${n4}" 2>&1 | Out-Null
+& $PSMUX set -g mode-style "bg=${n9},fg=${n0}" 2>&1 | Out-Null
 
 Write-Host "psmux-theme-nord: loaded (sep=$separator)" -ForegroundColor DarkGray

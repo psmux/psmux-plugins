@@ -14,6 +14,9 @@
 #   set -g @catppuccin-separator-style 'rounded'  # arrow|rounded|slanted|none
 #   set -g @catppuccin-show-user 'on'             # show username segment
 #   set -g @catppuccin-show-host 'off'            # show hostname segment
+#   set -g @catppuccin-show-pane-count 'on'       # show pane count badge
+#   set -g @catppuccin-show-zoom 'on'             # show zoom indicator
+#   set -g @catppuccin-show-sync 'on'             # show sync indicator
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'
@@ -35,10 +38,13 @@ function Get-Opt {
     return $Default
 }
 
-$flavor = Get-Opt '@catppuccin-flavor' 'mocha'
-$sepStyle = Get-Opt '@catppuccin-separator-style' 'rounded'
-$showUser = Get-Opt '@catppuccin-show-user' 'on'
-$showHost = Get-Opt '@catppuccin-show-host' 'off'
+$flavor    = Get-Opt '@catppuccin-flavor' 'mocha'
+$sepStyle  = Get-Opt '@catppuccin-separator-style' 'rounded'
+$showUser  = Get-Opt '@catppuccin-show-user' 'on'
+$showHost  = Get-Opt '@catppuccin-show-host' 'off'
+$showPanes = Get-Opt '@catppuccin-show-pane-count' 'on'
+$showZoom  = Get-Opt '@catppuccin-show-zoom' 'on'
+$showSync  = Get-Opt '@catppuccin-show-sync' 'on'
 
 # --- Color palettes by flavor ---
 $palettes = @{
@@ -92,11 +98,26 @@ $p = $palettes[$flavor]
 if (-not $p) { $p = $palettes['mocha'] }
 
 # --- Separators ---
+# Active tabs use full powerline arrows; inactive use thin sub-separators
 switch ($sepStyle) {
-    'arrow'   { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
-    'rounded' { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
-    'slanted' { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
-    default   { $lSep = ' '; $rSep = ' '; $wLSep = ' '; $wRSep = ' ' }
+    'arrow'   { $lSep = ''; $rSep = ''; $wL = ''; $wR = ''; $wLThin = ''; $wRThin = '' }
+    'rounded' { $lSep = ''; $rSep = ''; $wL = ''; $wR = ''; $wLThin = ''; $wRThin = '' }
+    'slanted' { $lSep = ''; $rSep = ''; $wL = ''; $wR = ''; $wLThin = ''; $wRThin = '' }
+    default   { $lSep = ' '; $rSep = ' '; $wL = ' '; $wR = ' '; $wLThin = ' '; $wRThin = ' ' }
+}
+
+# --- Status indicators (conditionals) ---
+$zoomInd = ''
+if ($showZoom -eq 'on') {
+    $zoomInd = "#{?window_zoomed_flag,#[fg=$($p.yellow)] 󰁌 ,}"
+}
+$syncInd = ''
+if ($showSync -eq 'on') {
+    $syncInd = "#{?pane_synchronized,#[fg=$($p.peach)]#[bg=$($p.base)]${rSep}#[bg=$($p.peach)]#[fg=$($p.crust),bold] 󰓦 SYNC #[fg=$($p.peach)]#[bg=$($p.base)]${lSep},}"
+}
+$paneCount = ''
+if ($showPanes -eq 'on') {
+    $paneCount = "#{?#{e|>:#{window_panes}#,1},#[fg=$($p.overlay2)]  #{window_panes},}"
 }
 
 # =============================================================================
@@ -108,6 +129,8 @@ switch ($sepStyle) {
 & $PSMUX set -g status-justify left 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
 & $PSMUX set -g status-style "bg=$($p.base),fg=$($p.text)" 2>&1 | Out-Null
+# Seamless powerline: no gap between tabs
+& $PSMUX set -g window-status-separator "" 2>&1 | Out-Null
 
 # Status left: session icon + name + optional user/host
 $stLeft = "#[bg=$($p.blue),fg=$($p.crust),bold]  #S #[fg=$($p.blue),bg=$($p.surface0)]${lSep}"
@@ -121,19 +144,25 @@ $stLeft += "#[fg=$($p.surface0),bg=$($p.base)]${lSep} "
 & $PSMUX set -g status-left $stLeft 2>&1 | Out-Null
 & $PSMUX set -g status-left-length 50 2>&1 | Out-Null
 
-# Status right: prefix indicator + time + day + date gradient with icons
+# Status right: prefix indicator + sync + time + day + date gradient with icons
 $prefixInd = "#{?client_prefix,#[fg=$($p.peach)]#[bg=$($p.base)]${rSep}#[bg=$($p.peach)]#[fg=$($p.crust),bold] 󰌌 PREF #[fg=$($p.peach)]#[bg=$($p.base)]${lSep},}"
-& $PSMUX set -g status-right "${prefixInd}#[fg=$($p.surface1),bg=$($p.base)]${rSep}#[fg=$($p.sky),bg=$($p.surface1)]  %H:%M #[fg=$($p.surface2),bg=$($p.surface1)]${rSep}#[fg=$($p.yellow),bg=$($p.surface2)] 󰃰 %a #[fg=$($p.mauve),bg=$($p.surface2)]${rSep}#[fg=$($p.crust),bg=$($p.mauve),bold] 󰨲 %d-%b " 2>&1 | Out-Null
+& $PSMUX set -g status-right "${prefixInd}${syncInd}#[fg=$($p.surface1),bg=$($p.base)]${rSep}#[fg=$($p.sky),bg=$($p.surface1)]  %H:%M #[fg=$($p.surface2),bg=$($p.surface1)]${rSep}#[fg=$($p.yellow),bg=$($p.surface2)] 󰃰 %a #[fg=$($p.mauve),bg=$($p.surface2)]${rSep}#[fg=$($p.crust),bg=$($p.mauve),bold] 󰨲 %d-%b " 2>&1 | Out-Null
 & $PSMUX set -g status-right-length 80 2>&1 | Out-Null
 
-# Window status (inactive) with icon
-& $PSMUX set -g window-status-format "#[fg=$($p.surface1),bg=$($p.base)]${wLSep}#[fg=$($p.subtext0),bg=$($p.surface1)]  #I  #W #{?window_flags,#{window_flags},}#[fg=$($p.surface1),bg=$($p.base)]${wRSep}" 2>&1 | Out-Null
+# Window status (inactive): thin sub-separators for lighter visual weight
+& $PSMUX set -g window-status-format "#[fg=$($p.surface1),bg=$($p.base)]${wLThin}#[fg=$($p.subtext0),bg=$($p.surface1)]  #I  #W #{?window_flags,#{window_flags},}${paneCount}#[fg=$($p.surface1),bg=$($p.base)]${wRThin}" 2>&1 | Out-Null
 
-# Window status (current/active) with icon
-& $PSMUX set -g window-status-current-format "#[fg=$($p.green),bg=$($p.base)]${wLSep}#[fg=$($p.crust),bg=$($p.green),bold]  #I  #W #{?window_flags,#{window_flags},}#[fg=$($p.green),bg=$($p.base)]${wRSep}" 2>&1 | Out-Null
+# Window status (current/active): full powerline separators, bold + zoom/pane indicators
+& $PSMUX set -g window-status-current-format "#[fg=$($p.green),bg=$($p.base)]${wL}#[fg=$($p.crust),bg=$($p.green),bold]  #I  #W #{?window_flags,#{window_flags},}${zoomInd}${paneCount}#[fg=$($p.green),bg=$($p.base)]${wR}" 2>&1 | Out-Null
 
-# Activity
-& $PSMUX set -g window-status-activity-style "fg=$($p.peach),bg=$($p.base)" 2>&1 | Out-Null
+# Last-used window gets underline accent
+& $PSMUX set -g window-status-last-style "underscore" 2>&1 | Out-Null
+
+# Activity: bold + distinct color
+& $PSMUX set -g window-status-activity-style "fg=$($p.peach),bg=$($p.base),bold" 2>&1 | Out-Null
+
+# Bell: red bold flash
+& $PSMUX set -g window-status-bell-style "fg=$($p.red),bg=$($p.base),bold" 2>&1 | Out-Null
 
 # Pane borders
 & $PSMUX set -g pane-active-border-style "fg=$($p.blue)" 2>&1 | Out-Null
