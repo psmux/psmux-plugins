@@ -66,9 +66,9 @@ $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinu
 
 if (-not $battery) {
     # No battery (desktop PC)
-    & $PSMUX set -g @battery_percentage 'AC' 2>&1 | Out-Null
-    & $PSMUX set -g @battery_icon '=' 2>&1 | Out-Null
-    & $PSMUX set -g @battery_status 'charged' 2>&1 | Out-Null
+    & $PSMUX set -g '@battery_percentage' 'AC' 2>&1 | Out-Null
+    & $PSMUX set -g '@battery_icon' '=' 2>&1 | Out-Null
+    & $PSMUX set -g '@battery_status' 'charged' 2>&1 | Out-Null
     exit 0
 }
 
@@ -105,11 +105,11 @@ $color = if ($percentage -gt 50) { '#[fg=green]' }
          else { '#[fg=red]' }
 
 # Update psmux options
-& $PSMUX set -g @battery_percentage "${percentage}%" 2>&1 | Out-Null
-& $PSMUX set -g @battery_icon "$icon" 2>&1 | Out-Null
-& $PSMUX set -g @battery_status "$status" 2>&1 | Out-Null
-& $PSMUX set -g @battery_color "$color" 2>&1 | Out-Null
-& $PSMUX set -g @battery_status_icon "$statusIcon" 2>&1 | Out-Null
+& $PSMUX set -g '@battery_percentage' "${percentage}%" 2>&1 | Out-Null
+& $PSMUX set -g '@battery_icon' "$icon" 2>&1 | Out-Null
+& $PSMUX set -g '@battery_status' "$status" 2>&1 | Out-Null
+& $PSMUX set -g '@battery_color' "$color" 2>&1 | Out-Null
+& $PSMUX set -g '@battery_status_icon' "$statusIcon" 2>&1 | Out-Null
 
 # Build the battery display string
 $display = "${color}${statusIcon}${percentage}%#[default]"
@@ -130,6 +130,8 @@ Set-Content -Path $batteryScriptPath -Value $batteryScript -Force
 # NOTE: Convert backslashes to forward slashes — psmux strips backslashes
 $pollCmd = ("pwsh -NoProfile -File `"$batteryScriptPath`"") -replace '\\', '/'
 & $PSMUX set-hook -g client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -g status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set -g status-interval 5 2>&1 | Out-Null
 
 # Get initial battery status
 & pwsh -NoProfile -File $batteryScriptPath 2>&1 | Out-Null

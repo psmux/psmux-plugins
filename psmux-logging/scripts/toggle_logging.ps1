@@ -30,12 +30,12 @@ $currentPipe = (& $PSMUX show-options -g -v '@logging_active' 2>&1 | Out-String)
 if ($currentPipe -eq 'on') {
     # Stop logging
     & $PSMUX pipe-pane 2>&1 | Out-Null   # Empty pipe-pane stops piping
-    & $PSMUX set -g @logging_active 'off' 2>&1 | Out-Null
+    & $PSMUX set -g '@logging_active' 'off' 2>&1 | Out-Null
     & $PSMUX display-message "Logging stopped" 2>&1 | Out-Null
 } else {
     # Start logging via pipe-pane
     & $PSMUX pipe-pane -o "pwsh -NoProfile -Command { `$input | Out-File -Append -FilePath '$logFile' -Encoding UTF8 }" 2>&1 | Out-Null
-    & $PSMUX set -g @logging_active 'on' 2>&1 | Out-Null
-    & $PSMUX set -g @logging_file "$logFile" 2>&1 | Out-Null
+    & $PSMUX set -g '@logging_active' 'on' 2>&1 | Out-Null
+    & $PSMUX set -g '@logging_file' "$logFile" 2>&1 | Out-Null
     & $PSMUX display-message "Logging to: $logFile" 2>&1 | Out-Null
 }

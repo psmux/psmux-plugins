@@ -42,13 +42,13 @@ $memColor = if ($memPercent -lt 50) { '#[fg=green]' }
 $cpuDisplay = "${cpuColor}CPU:${cpuRounded}%#[default]"
 $memDisplay = "${memColor}MEM:${memPercent}%#[default]"
 
-# Store as psmux options
-& $PSMUX set -g @cpu_percentage "${cpuRounded}%" 2>&1 | Out-Null
-& $PSMUX set -g @cpu_display "$cpuDisplay" 2>&1 | Out-Null
-& $PSMUX set -g @ram_percentage "${memPercent}%" 2>&1 | Out-Null
-& $PSMUX set -g @ram_display "$memDisplay" 2>&1 | Out-Null
-& $PSMUX set -g @ram_used "${usedMem}G" 2>&1 | Out-Null
-& $PSMUX set -g @ram_total "${totalMem}G" 2>&1 | Out-Null
+# Store as psmux options (quote @names to prevent PowerShell splatting)
+& $PSMUX set -g '@cpu_percentage' "${cpuRounded}%" 2>&1 | Out-Null
+& $PSMUX set -g '@cpu_display' "$cpuDisplay" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_percentage' "${memPercent}%" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_display' "$memDisplay" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_used' "${usedMem}G" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_total' "${totalMem}G" 2>&1 | Out-Null
 
 # Inject into status-right if placeholders exist
 $currentRight = (& $PSMUX show-options -g -v status-right 2>&1 | Out-String).Trim()

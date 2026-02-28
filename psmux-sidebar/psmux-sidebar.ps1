@@ -73,12 +73,12 @@ if ($sidebarActive -and $sidebarActive -match '^%\d+$') {
     $panes = (& $PSMUX list-panes 2>&1) | Out-String
     if ($panes -match [regex]::Escape($sidebarActive)) {
         & $PSMUX kill-pane -t $sidebarActive 2>&1 | Out-Null
-        & $PSMUX set -g @sidebar-pane-id '' 2>&1 | Out-Null
+        & $PSMUX set -g '@sidebar-pane-id' '' 2>&1 | Out-Null
         & $PSMUX display-message 'Sidebar closed' 2>&1 | Out-Null
         exit 0
     } else {
         # Pane no longer exists, clear the option
-        & $PSMUX set -g @sidebar-pane-id '' 2>&1 | Out-Null
+        & $PSMUX set -g '@sidebar-pane-id' '' 2>&1 | Out-Null
     }
 }
 
@@ -110,7 +110,7 @@ $splitArgs = @('split-window', $splitFlag, '-l', $width, '-c', $cwd, '--', 'pwsh
 
 # Store the sidebar pane ID
 $newPaneId = (& $PSMUX display-message -p '#{pane_id}' 2>&1 | Out-String).Trim()
-& $PSMUX set -g @sidebar-pane-id "$newPaneId" 2>&1 | Out-Null
+& $PSMUX set -g '@sidebar-pane-id' "$newPaneId" 2>&1 | Out-Null
 
 if (-not $FocusSidebar) {
     # Return focus to the original pane

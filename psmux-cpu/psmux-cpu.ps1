@@ -82,12 +82,12 @@ $cpuDisplay = "${cpuColor}CPU:${cpuRounded}%#[default]"
 $memDisplay = "${memColor}MEM:${memPercent}%#[default]"
 
 # Store as psmux options
-& $PSMUX set -g @cpu_percentage "${cpuRounded}%" 2>&1 | Out-Null
-& $PSMUX set -g @cpu_display "$cpuDisplay" 2>&1 | Out-Null
-& $PSMUX set -g @ram_percentage "${memPercent}%" 2>&1 | Out-Null
-& $PSMUX set -g @ram_display "$memDisplay" 2>&1 | Out-Null
-& $PSMUX set -g @ram_used "${usedMem}G" 2>&1 | Out-Null
-& $PSMUX set -g @ram_total "${totalMem}G" 2>&1 | Out-Null
+& $PSMUX set -g '@cpu_percentage' "${cpuRounded}%" 2>&1 | Out-Null
+& $PSMUX set -g '@cpu_display' "$cpuDisplay" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_percentage' "${memPercent}%" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_display' "$memDisplay" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_used' "${usedMem}G" 2>&1 | Out-Null
+& $PSMUX set -g '@ram_total' "${totalMem}G" 2>&1 | Out-Null
 
 # Inject into status-right if placeholders exist
 $currentRight = (& $PSMUX show-options -g -v status-right 2>&1 | Out-String).Trim()
@@ -114,6 +114,8 @@ Set-Content -Path $statsScriptPath -Value $statsScript -Force
 # NOTE: Convert backslashes to forward slashes — psmux strips backslashes
 $pollCmd = ("pwsh -NoProfile -File `"$statsScriptPath`"") -replace '\\', '/'
 & $PSMUX set-hook -g client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -g status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set -g status-interval 5 2>&1 | Out-Null
 
 # Initial poll
 & pwsh -NoProfile -File $statsScriptPath 2>&1 | Out-Null
