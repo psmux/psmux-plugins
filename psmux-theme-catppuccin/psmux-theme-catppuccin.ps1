@@ -10,9 +10,10 @@
 # Flavors: latte (light), frappe, macchiato, mocha (dark, default)
 #
 # Options:
-#   set -g @catppuccin-flavor 'mocha'       # latte|frappe|macchiato|mocha
-#   set -g @catppuccin-show-powerline 'on'  # powerline arrows
-#   set -g @catppuccin-window-style 'rounded' # rounded|square|none
+#   set -g @catppuccin-flavor 'mocha'             # latte|frappe|macchiato|mocha
+#   set -g @catppuccin-separator-style 'rounded'  # arrow|rounded|slanted|none
+#   set -g @catppuccin-show-user 'on'             # show username segment
+#   set -g @catppuccin-show-host 'off'            # show hostname segment
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'
@@ -35,8 +36,9 @@ function Get-Opt {
 }
 
 $flavor = Get-Opt '@catppuccin-flavor' 'mocha'
-$showPowerline = Get-Opt '@catppuccin-show-powerline' 'on'
-$windowStyle = Get-Opt '@catppuccin-window-style' 'rounded'
+$sepStyle = Get-Opt '@catppuccin-separator-style' 'rounded'
+$showUser = Get-Opt '@catppuccin-show-user' 'on'
+$showHost = Get-Opt '@catppuccin-show-host' 'off'
 
 # --- Color palettes by flavor ---
 $palettes = @{
@@ -90,16 +92,11 @@ $p = $palettes[$flavor]
 if (-not $p) { $p = $palettes['mocha'] }
 
 # --- Separators ---
-switch ($windowStyle) {
+switch ($sepStyle) {
+    'arrow'   { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
     'rounded' { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
-    'square'  { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
+    'slanted' { $lSep = ''; $rSep = ''; $wLSep = ''; $wRSep = '' }
     default   { $lSep = ' '; $rSep = ' '; $wLSep = ' '; $wRSep = ' ' }
-}
-
-if ($showPowerline -eq 'on') {
-    $plL = ''; $plR = ''
-} else {
-    $plL = ''; $plR = ''
 }
 
 # =============================================================================
@@ -112,26 +109,35 @@ if ($showPowerline -eq 'on') {
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
 & $PSMUX set -g status-style "bg=$($p.base),fg=$($p.text)" 2>&1 | Out-Null
 
-# Status left
-& $PSMUX set -g status-left "#[bg=$($p.blue),fg=$($p.crust),bold] #S #[fg=$($p.blue),bg=$($p.base)]${plL} " 2>&1 | Out-Null
-& $PSMUX set -g status-left-length 30 2>&1 | Out-Null
+# Status left: session icon + name + optional user/host
+$stLeft = "#[bg=$($p.blue),fg=$($p.crust),bold]  #S #[fg=$($p.blue),bg=$($p.surface0)]${lSep}"
+if ($showUser -eq 'on') {
+    $stLeft += "#[fg=$($p.subtext0),bg=$($p.surface0)]  #(whoami) "
+}
+if ($showHost -eq 'on') {
+    $stLeft += "#[fg=$($p.surface1),bg=$($p.surface0)]#[fg=$($p.sky),bg=$($p.surface1)] 󰒋 #H "
+}
+$stLeft += "#[fg=$($p.surface0),bg=$($p.base)]${lSep} "
+& $PSMUX set -g status-left $stLeft 2>&1 | Out-Null
+& $PSMUX set -g status-left-length 50 2>&1 | Out-Null
 
-# Status right
-$prefixInd = "#{?client_prefix,#[fg=$($p.peach)]#[bg=$($p.base)]${plR}#[bg=$($p.peach)]#[fg=$($p.crust)]  #[fg=$($p.peach)]#[bg=$($p.base)]${plL},}"
-& $PSMUX set -g status-right "${prefixInd}#[fg=$($p.surface1),bg=$($p.base)]${plR}#[fg=$($p.text),bg=$($p.surface1)] %H:%M #[fg=$($p.mauve),bg=$($p.surface1)]${plR}#[fg=$($p.crust),bg=$($p.mauve),bold] %d-%b " 2>&1 | Out-Null
-& $PSMUX set -g status-right-length 60 2>&1 | Out-Null
+# Status right: prefix indicator + time + day + date gradient with icons
+$prefixInd = "#{?client_prefix,#[fg=$($p.peach)]#[bg=$($p.base)]${rSep}#[bg=$($p.peach)]#[fg=$($p.crust),bold] 󰌌 PREF #[fg=$($p.peach)]#[bg=$($p.base)]${lSep},}"
+& $PSMUX set -g status-right "${prefixInd}#[fg=$($p.surface1),bg=$($p.base)]${rSep}#[fg=$($p.sky),bg=$($p.surface1)]  %H:%M #[fg=$($p.surface2),bg=$($p.surface1)]${rSep}#[fg=$($p.yellow),bg=$($p.surface2)] 󰃰 %a #[fg=$($p.mauve),bg=$($p.surface2)]${rSep}#[fg=$($p.crust),bg=$($p.mauve),bold] 󰨲 %d-%b " 2>&1 | Out-Null
+& $PSMUX set -g status-right-length 80 2>&1 | Out-Null
 
-# Window status (inactive)
-& $PSMUX set -g window-status-format "#[fg=$($p.surface1),bg=$($p.base)]${wLSep}#[fg=$($p.subtext0),bg=$($p.surface1)] #I #W #{?window_flags,#{window_flags},}#[fg=$($p.surface1),bg=$($p.base)]${wRSep}" 2>&1 | Out-Null
+# Window status (inactive) with icon
+& $PSMUX set -g window-status-format "#[fg=$($p.surface1),bg=$($p.base)]${wLSep}#[fg=$($p.subtext0),bg=$($p.surface1)]  #I  #W #{?window_flags,#{window_flags},}#[fg=$($p.surface1),bg=$($p.base)]${wRSep}" 2>&1 | Out-Null
 
-# Window status (current/active)
-& $PSMUX set -g window-status-current-format "#[fg=$($p.green),bg=$($p.base)]${wLSep}#[fg=$($p.crust),bg=$($p.green),bold] #I #W #{?window_flags,#{window_flags},}#[fg=$($p.green),bg=$($p.base)]${wRSep}" 2>&1 | Out-Null
+# Window status (current/active) with icon
+& $PSMUX set -g window-status-current-format "#[fg=$($p.green),bg=$($p.base)]${wLSep}#[fg=$($p.crust),bg=$($p.green),bold]  #I  #W #{?window_flags,#{window_flags},}#[fg=$($p.green),bg=$($p.base)]${wRSep}" 2>&1 | Out-Null
 
 # Activity
 & $PSMUX set -g window-status-activity-style "fg=$($p.peach),bg=$($p.base)" 2>&1 | Out-Null
 
 # Pane borders
 & $PSMUX set -g pane-active-border-style "fg=$($p.blue)" 2>&1 | Out-Null
+& $PSMUX set -g pane-border-style "fg=$($p.surface0)" 2>&1 | Out-Null
 
 # Messages
 & $PSMUX set -g message-style "bg=$($p.surface0),fg=$($p.text)" 2>&1 | Out-Null
