@@ -119,6 +119,102 @@ function Resolve-PluginSpec {
     }
 }
 
+# --- Find the active config file ---
+function Get-PsmuxConfigFile {
+    $configPaths = @(
+        "$env:USERPROFILE\.psmux.conf",
+        "$env:USERPROFILE\.psmuxrc",
+        "$env:USERPROFILE\.tmux.conf",
+        "$env:USERPROFILE\.config\psmux\psmux.conf"
+    )
+    foreach ($cfg in $configPaths) {
+        if (Test-Path $cfg) { return $cfg }
+    }
+    return $null
+}
+
+# --- Persist plugin activation line to config file ---
+# Writes a source-file or run-shell line so the plugin loads on next server start.
+function Persist-PluginActivation {
+    param([string]$Spec, [string]$PluginPath)
+    $name = Split-Path -Leaf $PluginPath
+    $configFile = Get-PsmuxConfigFile
+    if (-not $configFile) { return }
+
+    $content = Get-Content $configFile -Raw -ErrorAction SilentlyContinue
+    if (-not $content) { return }
+
+    # Build a tilde-relative forward-slash path for the activation line
+    $homeFwd = ($env:USERPROFILE -replace '\\', '/')
+
+    # Determine the activation line based on what the plugin ships
+    $pluginConf = Join-Path $PluginPath 'plugin.conf'
+    $pluginPs1  = Join-Path $PluginPath "$name.ps1"
+    if (Test-Path $pluginConf) {
+        $relPath = ($pluginConf -replace '\\', '/') -replace [regex]::Escape($homeFwd), '~'
+        $activationLine = "source-file '$relPath'"
+    } elseif (Test-Path $pluginPs1) {
+        $relPath = ($pluginPs1 -replace '\\', '/') -replace [regex]::Escape($homeFwd), '~'
+        $activationLine = "run-shell '$relPath'"
+    } else {
+        return  # no known entry point
+    }
+
+    # Skip if this activation line (or one referencing the same plugin name) already exists
+    if ($content -match [regex]::Escape($name)) { return }
+
+    # Append inside managed section, or create one
+    $lines = @(Get-Content $configFile -ErrorAction SilentlyContinue)
+    $endIdx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '# -- End plugins') { $endIdx = $i; break }
+    }
+
+    $pluginLine = "set -g @plugin '$Spec'"
+    if ($endIdx -ge 0) {
+        # Insert before the end-marker
+        $before = $lines[0..($endIdx - 1)]
+        $after  = $lines[$endIdx..($lines.Count - 1)]
+        $lines  = @($before) + @($pluginLine, $activationLine) + @($after)
+    } else {
+        # Create a managed section at the end
+        $lines += @(
+            '',
+            '# -- Plugins (managed by ppm) --------------------------------',
+            $pluginLine,
+            $activationLine,
+            '# -- End plugins ---------------------------------------------'
+        )
+    }
+
+    $lines | Set-Content -Path $configFile -Encoding UTF8
+    Write-Host "  Persisted: $name -> config" -ForegroundColor DarkCyan
+}
+
+# --- Remove plugin activation lines from config file ---
+function Remove-PluginActivation {
+    param([string]$PluginName)
+    $configFile = Get-PsmuxConfigFile
+    if (-not $configFile) { return }
+
+    $lines = @(Get-Content $configFile -ErrorAction SilentlyContinue)
+    $filtered = $lines | Where-Object {
+        -not ($_ -match [regex]::Escape($PluginName) -and
+              ($_ -match 'source-file' -or $_ -match 'run-shell' -or $_ -match '@plugin'))
+    }
+
+    # Clean up empty managed section
+    $hasPlugins = $filtered | Where-Object { $_ -match '@plugin' -and $_ -notmatch 'ppm' }
+    if (-not $hasPlugins) {
+        $filtered = $filtered | Where-Object {
+            $_ -notmatch '# -- Plugins \(managed by ppm\)' -and
+            $_ -notmatch '# -- End plugins'
+        }
+    }
+
+    $filtered | Set-Content -Path $configFile -Encoding UTF8
+}
+
 # --- Install a single plugin ---
 function Install-Plugin {
     param([string]$Spec)
@@ -134,8 +230,10 @@ function Install-Plugin {
         git clone --depth 1 $info.Url $info.Path 2>&1 | Out-Null
         if (Test-Path $info.Path) {
             Write-Host "  Installed: $($info.Name)" -ForegroundColor Green
-            # Source the plugin
+            # Source the plugin into the running session
             Initialize-Plugin $info.Path
+            # Persist activation to config file so it survives server restarts
+            Persist-PluginActivation -Spec $Spec -PluginPath $info.Path
             return $true
         }
     } catch {}
@@ -146,6 +244,7 @@ function Install-Plugin {
         Copy-Item -Path $bundledPath -Destination $info.Path -Recurse -Force
         Write-Host "  Installed (bundled): $($info.Name)" -ForegroundColor Green
         Initialize-Plugin $info.Path
+        Persist-PluginActivation -Spec $Spec -PluginPath $info.Path
         return $true
     }
 
@@ -265,6 +364,8 @@ function Remove-UnusedPlugins {
         if ($dir.Name -notin $declaredNames) {
             Write-Host "  Removing: $($dir.Name)" -ForegroundColor Yellow
             Remove-Item -Recurse -Force $dir.FullName -ErrorAction SilentlyContinue
+            # Also remove activation lines from config
+            Remove-PluginActivation -PluginName $dir.Name
             $removed++
         }
     }
