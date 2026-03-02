@@ -24,7 +24,6 @@ Add to your `~/.psmux.conf`:
 # ===========================================
 set -g @plugin 'psmux-plugins/ppm'
 set -g @plugin 'psmux-plugins/psmux-sensible'
-set -g @plugin 'psmux-plugins/psmux-yank'
 set -g @plugin 'psmux-plugins/psmux-resurrect'
 set -g @plugin 'psmux-plugins/psmux-pain-control'
 
@@ -44,7 +43,6 @@ Start psmux and press `Prefix + I` (capital I) to install.
 |--------|-------------|-----------------|
 | [**ppm**](ppm/) | Plugin manager | [tpm](https://github.com/tmux-plugins/tpm) |
 | [**psmux-sensible**](psmux-sensible/) | Sensible defaults | [tmux-sensible](https://github.com/tmux-plugins/tmux-sensible) |
-| [**psmux-yank**](psmux-yank/) | Windows clipboard integration | [tmux-yank](https://github.com/tmux-plugins/tmux-yank) |
 | [**psmux-resurrect**](psmux-resurrect/) | Save/restore sessions | [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) |
 | [**psmux-continuum**](psmux-continuum/) | Auto-save/restore | [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) |
 | [**psmux-pain-control**](psmux-pain-control/) | Better pane navigation | [tmux-pain-control](https://github.com/tmux-plugins/tmux-pain-control) |
@@ -82,13 +80,6 @@ Start psmux and press `Prefix + I` (capital I) to install.
 | `Prefix + \|` | Split horizontal |
 | `Prefix + -` | Split vertical |
 | `Shift + Left/Right` | Prev/next window (no prefix) |
-
-### psmux-yank
-| Key | Action |
-|-----|--------|
-| `y` (copy mode) | Copy to clipboard |
-| `Prefix + y` | Copy pane content |
-| `Prefix + Alt-y` | Copy working directory |
 
 ### psmux-resurrect
 | Key | Action |
@@ -150,10 +141,8 @@ See the [Plugin Developer Guide](PLUGIN_DEVELOPER_GUIDE.md) for:
       clean_plugins.ps1
   psmux-sensible/          # Each plugin gets its own directory
     psmux-sensible.ps1
-  psmux-yank/
-    psmux-yank.ps1
-    scripts/
-      copy_to_clipboard.ps1
+  psmux-resurrect/
+    psmux-resurrect.ps1
   ...
 ```
 

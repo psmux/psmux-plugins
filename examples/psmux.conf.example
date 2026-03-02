@@ -33,8 +33,8 @@ source-file ~/.psmux/plugins/psmux-sensible/plugin.conf
 # Vim-style pane navigation: h/j/k/l nav, Alt+h/j/k/l resize
 source-file ~/.psmux/plugins/psmux-pain-control/plugin.conf
 
-# Windows clipboard integration (y to copy in copy-mode)
-source-file ~/.psmux/plugins/psmux-yank/plugin.conf
+# NOTE: Clipboard integration (y to copy, right-click paste) is built into psmux natively.
+# No plugin needed for clipboard support.
 
 # Prefix key indicator in status bar
 source-file ~/.psmux/plugins/psmux-prefix-highlight/plugin.conf

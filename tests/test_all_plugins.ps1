@@ -49,7 +49,7 @@ $SESSION = "plugin_test_$(Get-Random -Minimum 1000 -Maximum 9999)"
 Write-Host "`n--- Phase 1: Static Analysis of plugin.conf files ---" -ForegroundColor Yellow
 
 $plugins = @(
-    'psmux-sensible', 'psmux-pain-control', 'psmux-yank',
+    'psmux-sensible', 'psmux-pain-control',
     'psmux-resurrect', 'psmux-continuum', 'psmux-prefix-highlight',
     'psmux-battery', 'psmux-cpu', 'psmux-logging', 'psmux-sidebar'
 )
@@ -124,7 +124,6 @@ foreach ($plugin in ($plugins + $themes)) {
 # Check scripts/ directories for plugins that reference them
 Write-Host "`n--- Phase 1c: Check referenced scripts ---" -ForegroundColor Yellow
 $scriptChecks = @{
-    'psmux-yank' = @('scripts/copy_to_clipboard.ps1')
     'psmux-resurrect' = @('scripts/save.ps1', 'scripts/restore.ps1')
     'psmux-continuum' = @('scripts/auto_save.ps1', 'scripts/auto_restore.ps1', 'scripts/boot.ps1')
     'psmux-battery' = @('scripts/battery_status.ps1', 'scripts/battery_info.ps1')
@@ -187,9 +186,6 @@ source-file ~/.psmux/plugins/psmux-sensible/plugin.conf
 
 # Pain Control
 source-file ~/.psmux/plugins/psmux-pain-control/plugin.conf
-
-# Yank
-source-file ~/.psmux/plugins/psmux-yank/plugin.conf
 
 # Prefix Highlight
 source-file ~/.psmux/plugins/psmux-prefix-highlight/plugin.conf
@@ -254,9 +250,6 @@ if ($sessions -match $SESSION) {
     Check "pain-control: l binding (select-pane -R)" ($keys -match '\bl\b.*select-pane.*-R')
     Check "pain-control: M-h (resize-pane)" ($keys -match 'M-h.*resize-pane')
     Check "pain-control: c binding (new-window)" ($keys -match '\bc\b.*new-window')
-    
-    # psmux-yank bindings (copy-mode-vi)
-    Check "yank: y in copy-mode-vi" ($keys -match 'copy-mode-vi.*y.*copy-pipe|y.*send-keys.*copy')
     
     # psmux-resurrect bindings
     Check "resurrect: C-s (save)" ($keys -match 'C-s.*run-shell.*save')

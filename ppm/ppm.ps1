@@ -8,7 +8,6 @@
 # Usage in ~/.psmux.conf:
 #   set -g @plugin 'psmux-plugins/ppm'
 #   set -g @plugin 'psmux-plugins/psmux-sensible'
-#   set -g @plugin 'psmux-plugins/psmux-yank'
 #   run '~/.psmux/plugins/ppm/ppm.ps1'
 #
 # Key bindings (after loading):
