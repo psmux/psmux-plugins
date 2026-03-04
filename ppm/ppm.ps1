@@ -388,6 +388,15 @@ function Initialize-Plugin {
     param([string]$PluginPath)
     $name = Split-Path -Leaf $PluginPath
 
+    # If the plugin ships a plugin.conf, psmux already sourced it natively
+    # when processing the `set -g @plugin` declaration.  Skip re-sourcing
+    # via the .ps1 entry point to avoid overriding user settings that were
+    # set AFTER the @plugin line in the config file.
+    $confFile = Join-Path $PluginPath 'plugin.conf'
+    if (Test-Path $confFile) {
+        return
+    }
+
     # Look for the main plugin entry point (in priority order)
     $entryPoints = @(
         (Join-Path $PluginPath "$name.ps1"),
@@ -405,12 +414,6 @@ function Initialize-Plugin {
             }
             return
         }
-    }
-
-    # Fallback: look for .conf files to source
-    $confFiles = Get-ChildItem -Path $PluginPath -Filter '*.conf' -File -ErrorAction SilentlyContinue
-    foreach ($cf in $confFiles) {
-        Invoke-Psmux source-file $cf.FullName 2>&1 | Out-Null
     }
 }
 
