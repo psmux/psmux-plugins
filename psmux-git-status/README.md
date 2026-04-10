@@ -35,10 +35,10 @@ set -g @plugin 'marlocarlo/psmux-plugins/psmux-git-status'
 
 ## Usage
 
-Add `{git_status}` to your status-right or status-left:
+Add `#{git_status}` to your status-right or status-left:
 
 ```bash
-set -g status-right '{git_status} | %H:%M'
+set -g status-right '#{git_status} | %H:%M'
 ```
 
 ## Keybindings

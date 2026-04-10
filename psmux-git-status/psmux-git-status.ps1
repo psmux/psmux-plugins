@@ -7,7 +7,7 @@
 # and commit info in the status bar. Essential for developer workflows.
 #
 # Usage in status-right or status-left:
-#   set -g status-right '{git_status} | %H:%M'
+#   set -g status-right '#{git_status} | %H:%M'
 #
 # Options:
 #   set -g @git-status-show-branch 'on'
@@ -59,7 +59,7 @@ if (-not $panePath -or $panePath -match 'error|unknown') {
 # Check if we're in a git repo
 $gitCheck = git -C $panePath rev-parse --is-inside-work-tree 2>&1
 if ($gitCheck -ne 'true') {
-    & $PSMUX set -g '@git_status_display' '' 2>&1 | Out-Null
+    & $PSMUX set -g '@git_status' '' 2>&1 | Out-Null
     exit
 }
 
@@ -112,21 +112,8 @@ if ($staged -eq 0 -and $modified -eq 0 -and $untracked -eq 0 -and $conflicts -eq
 
 $display = $parts -join ' '
 
-& $PSMUX set -g '@git_status_display' "$display" 2>&1 | Out-Null
+& $PSMUX set -g '@git_status' "$display" 2>&1 | Out-Null
 & $PSMUX set -g '@git_branch' "$branch" 2>&1 | Out-Null
-
-# Inject into status if placeholder exists
-$currentRight = (& $PSMUX show-options -g -v status-right 2>&1 | Out-String).Trim()
-if ($currentRight -match '\{git_status\}') {
-    $currentRight = $currentRight -replace '\{git_status\}', $display
-    & $PSMUX set -g status-right "$currentRight" 2>&1 | Out-Null
-}
-
-$currentLeft = (& $PSMUX show-options -g -v status-left 2>&1 | Out-String).Trim()
-if ($currentLeft -match '\{git_status\}') {
-    $currentLeft = $currentLeft -replace '\{git_status\}', $display
-    & $PSMUX set -g status-left "$currentLeft" 2>&1 | Out-Null
-}
 '@
 
 $gitScriptPath = Join-Path $SCRIPTS_DIR 'git_status.ps1'
@@ -158,4 +145,4 @@ $infoFwd = $infoPath -replace '\\', '/'
 
 & $PSMUX bind-key C-g "run-shell 'pwsh -NoProfile -File \"$infoFwd\"'" 2>&1 | Out-Null
 
-Write-Host "psmux-git-status: loaded (use {git_status} in status-right/left)" -ForegroundColor DarkGray
+Write-Host "psmux-git-status: loaded (use #{git_status} in status-right/left)" -ForegroundColor DarkGray
