@@ -18,16 +18,16 @@ set -g @plugin 'marlocarlo/psmux-plugins/psmux-net-speed'
 
 ## Usage
 
-Add `{net_speed}` placeholder to your status-right:
+Add `#{@net_speed_display}` to your status-right:
 
 ```bash
-set -g status-right '{net_speed} | %H:%M'
+set -g status-right '#{@net_speed_display} | %H:%M'
 ```
 
 Or access individual values:
-- `{net_speed}` - Combined download/upload display
-- `@net_speed_down` - Download speed only  
-- `@net_speed_up` - Upload speed only
+- `#{@net_speed_display}` - Combined download/upload display
+- `#{@net_speed_down}` - Download speed only  
+- `#{@net_speed_up}` - Upload speed only
 
 ## Keybindings
 

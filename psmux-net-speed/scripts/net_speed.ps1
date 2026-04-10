@@ -1,39 +1,4 @@
 #!/usr/bin/env pwsh
-# =============================================================================
-# psmux-net-speed - Network bandwidth monitor for psmux status bar
-# =============================================================================
-#
-# Shows upload/download speed in psmux status bar.
-# Uses native Windows performance counters.
-#
-# Usage in status-right:
-#   set -g status-right '#{@net_speed_display} | %H:%M'
-#
-# Options:
-#   set -g @net-speed-format 'compact'      # compact|full
-#   set -g @net-speed-interface 'auto'      # auto or specific interface name
-# =============================================================================
-
-$ErrorActionPreference = 'Continue'
-
-function Get-PsmuxBin {
-    foreach ($n in @('psmux','pmux','tmux')) {
-        $b = Get-Command $n -ErrorAction SilentlyContinue
-        if ($b) { return $b.Source }
-    }
-    return 'psmux'
-}
-
-$PSMUX = Get-PsmuxBin
-$SCRIPTS_DIR = Join-Path $PSScriptRoot 'scripts'
-
-if (-not (Test-Path $SCRIPTS_DIR)) {
-    New-Item -ItemType Directory -Path $SCRIPTS_DIR -Force | Out-Null
-}
-
-# --- Create net speed polling script ---
-$netScript = @'
-#!/usr/bin/env pwsh
 $ErrorActionPreference = 'SilentlyContinue'
 
 function Get-PsmuxBin {
@@ -117,39 +82,3 @@ if ($currentRight -match '\{net_speed\}') {
     $currentRight = $currentRight -replace '\{net_speed\}', $display
     & $PSMUX set -g status-right "$currentRight" 2>&1 | Out-Null
 }
-'@
-
-$netScriptPath = Join-Path $SCRIPTS_DIR 'net_speed.ps1'
-Set-Content -Path $netScriptPath -Value $netScript -Force
-
-# --- Set up polling ---
-$pollCmd = ("pwsh -NoProfile -File `"$netScriptPath`"") -replace '\\', '/'
-& $PSMUX set-hook -ga client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
-& $PSMUX set-hook -ga status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
-
-# Initial poll
-& pwsh -NoProfile -File $netScriptPath 2>&1 | Out-Null
-
-# --- Keybinding for detailed info ---
-$infoScript = @'
-$ErrorActionPreference = 'SilentlyContinue'
-$adapters = Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' }
-if ($adapters) {
-    $name = $adapters[0].Name
-    $speed = $adapters[0].LinkSpeed
-    $stats = Get-NetAdapterStatistics -Name $name
-    $rx = [math]::Round($stats.ReceivedBytes / 1MB, 1)
-    $tx = [math]::Round($stats.SentBytes / 1MB, 1)
-    psmux display-message "Net: $name ($speed) | RX: ${rx}MB | TX: ${tx}MB"
-} else {
-    psmux display-message "No active network adapter found"
-}
-'@
-
-$infoPath = Join-Path $SCRIPTS_DIR 'net_info.ps1'
-Set-Content -Path $infoPath -Value $infoScript -Force
-$infoFwd = $infoPath -replace '\\', '/'
-
-& $PSMUX bind-key C-n "run-shell 'pwsh -NoProfile -File \"$infoFwd\"'" 2>&1 | Out-Null
-
-Write-Host "psmux-net-speed: loaded (use #{@net_speed_display} in status-right)" -ForegroundColor DarkGray

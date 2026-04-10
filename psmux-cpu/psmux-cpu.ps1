@@ -8,7 +8,7 @@
 # Uses native Windows performance counters and CIM.
 #
 # Usage in status-right:
-#   set -g status-right '{cpu} {ram} | %H:%M'
+#   set -g status-right '#{@cpu_display} #{@ram_display} | %H:%M'
 #
 # Options:
 #   set -g @cpu_low_fg_color '#[fg=green]'
@@ -113,8 +113,8 @@ Set-Content -Path $statsScriptPath -Value $statsScript -Force
 # --- Set up polling ---
 # NOTE: Convert backslashes to forward slashes — psmux strips backslashes
 $pollCmd = ("pwsh -NoProfile -File `"$statsScriptPath`"") -replace '\\', '/'
-& $PSMUX set-hook -g client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
-& $PSMUX set-hook -g status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -ga client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -ga status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
 
 # Initial poll
@@ -142,4 +142,4 @@ $infoPathFwd = $infoScriptPath -replace '\\', '/'
 
 & $PSMUX bind-key C-c "run-shell 'pwsh -NoProfile -File \"$infoPathFwd\"'" 2>&1 | Out-Null
 
-Write-Host "psmux-cpu: loaded (use {cpu} {ram} in status-right)" -ForegroundColor DarkGray
+Write-Host "psmux-cpu: loaded (use #{@cpu_display} #{@ram_display} in status-right)" -ForegroundColor DarkGray

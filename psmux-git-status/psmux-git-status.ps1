@@ -121,8 +121,8 @@ Set-Content -Path $gitScriptPath -Value $gitScript -Force
 
 # --- Set up polling ---
 $pollCmd = ("pwsh -NoProfile -File `"$gitScriptPath`"") -replace '\\', '/'
-& $PSMUX set-hook -g client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
-& $PSMUX set-hook -g status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -ga client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -ga status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
 
 # Initial poll
 & pwsh -NoProfile -File $gitScriptPath 2>&1 | Out-Null

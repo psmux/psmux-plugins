@@ -16,7 +16,7 @@ $PSMUX = Get-PsmuxBin
 $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
 
 if (-not $battery) {
-    # No battery (desktop PC) — quote @names to prevent PowerShell splatting
+    # No battery (desktop PC)
     & $PSMUX set -g '@battery_percentage' 'AC' 2>&1 | Out-Null
     & $PSMUX set -g '@battery_icon' '=' 2>&1 | Out-Null
     & $PSMUX set -g '@battery_status' 'charged' 2>&1 | Out-Null
@@ -55,14 +55,14 @@ $color = if ($percentage -gt 50) { '#[fg=green]' }
          elseif ($percentage -gt 20) { '#[fg=yellow]' }
          else { '#[fg=red]' }
 
-# Update psmux options (quote @names to prevent PowerShell splatting)
+# Update psmux options
 & $PSMUX set -g '@battery_percentage' "${percentage}%" 2>&1 | Out-Null
 & $PSMUX set -g '@battery_icon' "$icon" 2>&1 | Out-Null
 & $PSMUX set -g '@battery_status' "$status" 2>&1 | Out-Null
 & $PSMUX set -g '@battery_color' "$color" 2>&1 | Out-Null
 & $PSMUX set -g '@battery_status_icon' "$statusIcon" 2>&1 | Out-Null
 
-# Build the battery display string and store as @battery_display
+# Build the battery display string
 $display = "${color}${statusIcon}${percentage}%#[default]"
 & $PSMUX set -g '@battery_display' "$display" 2>&1 | Out-Null
 

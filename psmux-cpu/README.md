@@ -12,10 +12,10 @@ set -g @plugin 'psmux-plugins/psmux-cpu'
 
 ## Usage
 
-Add `{cpu}` and/or `{ram}` to your status-right:
+Add `#{@cpu_display}` and/or `#{@ram_display}` to your status-right:
 
 ```tmux
-set -g status-right '{cpu} {ram} | %H:%M'
+set -g status-right '#{@cpu_display} #{@ram_display} | %H:%M'
 ```
 
 Or press `Prefix + Ctrl-c` for detailed system info.

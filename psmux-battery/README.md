@@ -12,10 +12,10 @@ set -g @plugin 'psmux-plugins/psmux-battery'
 
 ## Usage
 
-Add `{battery}` to your status-right:
+Add `#{@battery_display}` to your status-right:
 
 ```tmux
-set -g status-right '{battery} | %H:%M %d-%b-%y'
+set -g status-right '#{@battery_display} | %H:%M %d-%b-%y'
 ```
 
 Or press `Prefix + B` to see battery info as a message.

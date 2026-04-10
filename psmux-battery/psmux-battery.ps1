@@ -8,7 +8,7 @@
 # Uses native Windows WMI/CIM for laptop battery info.
 #
 # Usage in status bar:
-#   set -g status-right '#{battery_icon} #{battery_percentage} | %H:%M'
+#   set -g status-right '#{@battery_display} | %H:%M'
 #
 # Since psmux format variables are evaluated by the psmux binary itself,
 # this plugin uses a different approach: it periodically updates a status
@@ -113,8 +113,9 @@ $color = if ($percentage -gt 50) { '#[fg=green]' }
 
 # Build the battery display string
 $display = "${color}${statusIcon}${percentage}%#[default]"
+& $PSMUX set -g '@battery_display' "$display" 2>&1 | Out-Null
 
-# Get current status-right and inject battery info
+# Legacy: inject into status-right if it contains literal {battery} placeholder
 $currentRight = (& $PSMUX show-options -g -v status-right 2>&1 | Out-String).Trim()
 if ($currentRight -match '\{battery\}') {
     $newRight = $currentRight -replace '\{battery\}', $display
@@ -129,8 +130,8 @@ Set-Content -Path $batteryScriptPath -Value $batteryScript -Force
 # Update battery status every status-interval refresh
 # NOTE: Convert backslashes to forward slashes — psmux strips backslashes
 $pollCmd = ("pwsh -NoProfile -File `"$batteryScriptPath`"") -replace '\\', '/'
-& $PSMUX set-hook -g client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
-& $PSMUX set-hook -g status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -ga client-attached "run-shell '$pollCmd'" 2>&1 | Out-Null
+& $PSMUX set-hook -ga status-interval "run-shell '$pollCmd'" 2>&1 | Out-Null
 & $PSMUX set -g status-interval 5 2>&1 | Out-Null
 
 # Get initial battery status
@@ -157,4 +158,4 @@ $infoPathFwd = $infoScriptPath -replace '\\', '/'
 
 & $PSMUX bind-key b "run-shell 'pwsh -NoProfile -File \"$infoPathFwd\"'" 2>&1 | Out-Null
 
-Write-Host "psmux-battery: loaded (use {battery} in status-right)" -ForegroundColor DarkGray
+Write-Host "psmux-battery: loaded (use #{@battery_display} in status-right)" -ForegroundColor DarkGray
