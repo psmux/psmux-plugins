@@ -23,7 +23,7 @@ A [Rosé Pine](https://rosepinetheme.com) theme for psmux with powerline segment
 Add to your `~/.psmux.conf`:
 
 ```
-set -g @plugin 'marlocarlo/psmux-plugins/psmux-theme-rosepine'
+set -g @plugin 'psmux/psmux-plugins/psmux-theme-rosepine'
 ```
 
 ## Options

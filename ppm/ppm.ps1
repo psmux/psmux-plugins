@@ -2,7 +2,7 @@
 # =============================================================================
 # PPM - Psmux Plugin Manager
 # The plugin manager for psmux (like tpm for tmux)
-# https://github.com/marlocarlo/psmux-plugins/tree/main/ppm
+# https://github.com/psmux/psmux-plugins/tree/main/ppm
 # =============================================================================
 #
 # Usage in ~/.psmux.conf:
@@ -25,7 +25,7 @@ $ErrorActionPreference = 'Continue'
 # not a real GitHub org), it falls back to cloning the monorepo and extracting
 # the <name> subdirectory.
 $script:MONOREPO_MAP = @{
-    'psmux-plugins' = 'marlocarlo/psmux-plugins'
+    'psmux-plugins' = 'psmux/psmux-plugins'
 }
 
 # --- Resolve paths ---

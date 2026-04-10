@@ -1,6 +1,6 @@
 # Psmux Plugins
 
-The official plugin ecosystem for [psmux](https://github.com/marlocarlo/psmux) — the native Windows tmux built in Rust.
+The official plugin ecosystem for [psmux](https://github.com/psmux/psmux) — the native Windows tmux built in Rust.
 
 Ports of the most popular tmux plugins, reimplemented in PowerShell for Windows.
 
@@ -11,7 +11,7 @@ Ports of the most popular tmux plugins, reimplemented in PowerShell for Windows.
 ### 1. Install PPM (Psmux Plugin Manager)
 
 ```powershell
-git clone https://github.com/marlocarlo/psmux-plugins.git "$env:TEMP\psmux-plugins" ; Copy-Item "$env:TEMP\psmux-plugins\ppm" "$env:USERPROFILE\.psmux\plugins\ppm" -Recurse ; Remove-Item "$env:TEMP\psmux-plugins" -Recurse -Force
+git clone https://github.com/psmux/psmux-plugins.git "$env:TEMP\psmux-plugins" ; Copy-Item "$env:TEMP\psmux-plugins\ppm" "$env:USERPROFILE\.psmux\plugins\ppm" -Recurse ; Remove-Item "$env:TEMP\psmux-plugins" -Recurse -Force
 ```
 
 ### 2. Configure Plugins

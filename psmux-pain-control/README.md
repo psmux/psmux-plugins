@@ -1,6 +1,6 @@
 # psmux-pain-control
 
-Better pane navigation and management for [psmux](https://github.com/marlocarlo/psmux). Port of [tmux-pain-control](https://github.com/tmux-plugins/tmux-pain-control).
+Better pane navigation and management for [psmux](https://github.com/psmux/psmux). Port of [tmux-pain-control](https://github.com/tmux-plugins/tmux-pain-control).
 
 ## Installation (via PPM)
 

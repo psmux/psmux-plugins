@@ -7,7 +7,7 @@ Clean, modern dark theme with vibrant accent colors. Features powerline segments
 ## Installation
 
 ```
-set -g @plugin 'marlocarlo/psmux-plugins/psmux-theme-onedark'
+set -g @plugin 'psmux/psmux-plugins/psmux-theme-onedark'
 ```
 
 ## Options

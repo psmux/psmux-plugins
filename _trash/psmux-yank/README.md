@@ -1,6 +1,6 @@
 # psmux-yank
 
-Windows clipboard integration for [psmux](https://github.com/marlocarlo/psmux). Port of [tmux-yank](https://github.com/tmux-plugins/tmux-yank).
+Windows clipboard integration for [psmux](https://github.com/psmux/psmux). Port of [tmux-yank](https://github.com/tmux-plugins/tmux-yank).
 
 Uses native Windows clipboard APIs -- no external tools needed.
 

@@ -1,6 +1,6 @@
 # psmux-sidebar
 
-Directory tree sidebar for [psmux](https://github.com/marlocarlo/psmux). Port of [tmux-sidebar](https://github.com/tmux-plugins/tmux-sidebar).
+Directory tree sidebar for [psmux](https://github.com/psmux/psmux). Port of [tmux-sidebar](https://github.com/tmux-plugins/tmux-sidebar).
 
 ## Installation (via PPM)
 

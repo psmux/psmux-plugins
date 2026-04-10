@@ -15,7 +15,7 @@ Brings the distinctive wave/dragon/lotus color palettes to psmux with powerline 
 ## Installation
 
 ```
-set -g @plugin 'marlocarlo/psmux-plugins/psmux-theme-kanagawa'
+set -g @plugin 'psmux/psmux-plugins/psmux-theme-kanagawa'
 ```
 
 ## Options

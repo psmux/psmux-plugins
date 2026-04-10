@@ -1,11 +1,11 @@
 # PPM - Psmux Plugin Manager
 
-The plugin manager for [psmux](https://github.com/marlocarlo/psmux). Inspired by [tpm](https://github.com/tmux-plugins/tpm) for tmux.
+The plugin manager for [psmux](https://github.com/psmux/psmux). Inspired by [tpm](https://github.com/tmux-plugins/tpm) for tmux.
 
 ## Installation
 
 ```powershell
-git clone https://github.com/marlocarlo/psmux-plugins.git "$env:TEMP\psmux-plugins" ; Copy-Item "$env:TEMP\psmux-plugins\ppm" "$env:USERPROFILE\.psmux\plugins\ppm" -Recurse ; Remove-Item "$env:TEMP\psmux-plugins" -Recurse -Force
+git clone https://github.com/psmux/psmux-plugins.git "$env:TEMP\psmux-plugins" ; Copy-Item "$env:TEMP\psmux-plugins\ppm" "$env:USERPROFILE\.psmux\plugins\ppm" -Recurse ; Remove-Item "$env:TEMP\psmux-plugins" -Recurse -Force
 ```
 
 ## Configuration

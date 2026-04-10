@@ -1,6 +1,6 @@
 # psmux-sensible
 
-Sensible default settings for [psmux](https://github.com/marlocarlo/psmux). Port of [tmux-sensible](https://github.com/tmux-plugins/tmux-sensible).
+Sensible default settings for [psmux](https://github.com/psmux/psmux). Port of [tmux-sensible](https://github.com/tmux-plugins/tmux-sensible).
 
 ## Installation (via PPM)
 
