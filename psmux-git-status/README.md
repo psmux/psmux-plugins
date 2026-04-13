@@ -30,7 +30,7 @@ The must-have plugin for developers. Shows branch name, dirty/clean status, stag
 ## Installation
 
 ```
-set -g @plugin 'psmux/psmux-plugins/psmux-git-status'
+set -g @plugin 'psmux-plugins/psmux-git-status'
 ```
 
 ## Usage

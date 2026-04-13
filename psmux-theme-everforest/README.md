@@ -18,7 +18,7 @@ A warm green-toned theme designed for long coding sessions. Features powerline s
 ## Installation
 
 ```
-set -g @plugin 'psmux/psmux-plugins/psmux-theme-everforest'
+set -g @plugin 'psmux-plugins/psmux-theme-everforest'
 ```
 
 ## Options

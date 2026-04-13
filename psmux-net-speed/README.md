@@ -13,7 +13,7 @@ Shows real-time upload and download speeds with Nerd Font icons.
 ## Installation
 
 ```
-set -g @plugin 'psmux/psmux-plugins/psmux-net-speed'
+set -g @plugin 'psmux-plugins/psmux-net-speed'
 ```
 
 ## Usage
