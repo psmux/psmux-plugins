@@ -68,9 +68,9 @@ $branch = (git -C $panePath symbolic-ref --short HEAD 2>&1 | Out-String).Trim()
 if (-not $branch -or $branch -match 'fatal') {
     # Detached HEAD
     $branch = (git -C $panePath rev-parse --short HEAD 2>&1 | Out-String).Trim()
-    $branchIcon = '󰜘'  # detached icon
+    $branchIcon = [char]0x2387  # detached icon (alternative key)
 } else {
-    $branchIcon = ''  # branch icon
+    $branchIcon = [char]0x2325  # branch icon (option key symbol)
 }
 
 # Get status
@@ -91,23 +91,23 @@ if ($abInfo -match '^(\d+)\s+(\d+)$') {
 # Stash count
 $stashCount = @(git -C $panePath stash list 2>&1).Count
 
-# Build display string
+# Build display string using standard Unicode symbols (no Nerd Fonts required)
 $parts = @()
 $parts += "#[fg=magenta]${branchIcon} ${branch}#[default]"
 
-if ($staged -gt 0)    { $parts += "#[fg=green]󰐕${staged}#[default]" }
-if ($modified -gt 0)  { $parts += "#[fg=yellow]${modified}#[default]" }
-if ($untracked -gt 0) { $parts += "#[fg=red]${untracked}#[default]" }
-if ($conflicts -gt 0) { $parts += "#[fg=red,bold]${conflicts}#[default]" }
+if ($staged -gt 0)    { $parts += "#[fg=green]+${staged}#[default]" }
+if ($modified -gt 0)  { $parts += "#[fg=yellow]~${modified}#[default]" }
+if ($untracked -gt 0) { $parts += "#[fg=red]?${untracked}#[default]" }
+if ($conflicts -gt 0) { $parts += "#[fg=red,bold]!${conflicts}#[default]" }
 
-if ($ahead -gt 0)  { $parts += "#[fg=cyan]⇡${ahead}#[default]" }
-if ($behind -gt 0) { $parts += "#[fg=yellow]⇣${behind}#[default]" }
+if ($ahead -gt 0)  { $parts += "#[fg=cyan]$([char]0x2191)${ahead}#[default]" }
+if ($behind -gt 0) { $parts += "#[fg=yellow]$([char]0x2193)${behind}#[default]" }
 
-if ($stashCount -gt 0) { $parts += "#[fg=blue]󰆓${stashCount}#[default]" }
+if ($stashCount -gt 0) { $parts += "#[fg=blue]$([char]0x2261)${stashCount}#[default]" }
 
 # Clean indicator
 if ($staged -eq 0 -and $modified -eq 0 -and $untracked -eq 0 -and $conflicts -eq 0) {
-    $parts += "#[fg=green]✓#[default]"
+    $parts += "#[fg=green]$([char]0x2713)#[default]"
 }
 
 $display = $parts -join ' '
