@@ -27,69 +27,70 @@ $env_data = @{
     sessions = @()
 }
 
-# Get all sessions
-$sessions = (& $PSMUX ls 2>&1) | Out-String
-foreach ($line in ($sessions -split "`n")) {
-    if ($line -match '^(\S+):') {
-        $sessionName = $Matches[1]
-        $sessionData = @{
-            name = $sessionName
-            windows = @()
-        }
+# Get all session names using format flag for clean parsing
+$sessionLines = (& $PSMUX ls -F '#{session_name}' 2>&1) | Out-String
+foreach ($line in ($sessionLines -split "`n")) {
+    $sessionName = $line.Trim()
+    if ([string]::IsNullOrWhiteSpace($sessionName)) { continue }
 
-        # Get windows for this session
-        $windows = (& $PSMUX list-windows -t $sessionName 2>&1) | Out-String
-        foreach ($wline in ($windows -split "`n")) {
-            if ($wline -match '^(\d+):\s+(\S+)') {
-                $winIndex = $Matches[1]
-                $winName = $Matches[2]
-                $windowData = @{
-                    index = [int]$winIndex
-                    name = $winName
-                    panes = @()
-                }
-
-                # Get panes for this window
-                $panes = (& $PSMUX list-panes -t "${sessionName}:${winIndex}" 2>&1) | Out-String
-                $paneIndex = 0
-                foreach ($pline in ($panes -split "`n")) {
-                    if ($pline -match '^\d+:') {
-                        # Try to get pane working directory
-                        $paneTarget = "${sessionName}:${winIndex}.${paneIndex}"
-                        $paneDir = (& $PSMUX display-message -t $paneTarget -p '#{pane_current_path}' 2>&1 | Out-String).Trim()
-
-                        $paneData = @{
-                            index = $paneIndex
-                            directory = if ($paneDir) { $paneDir } else { $env:USERPROFILE }
-                        }
-
-                        # Capture pane contents if enabled
-                        $captureContents = (& $PSMUX show-options -g -v '@resurrect-capture-pane-contents' 2>&1 | Out-String).Trim()
-                        if ($captureContents -eq 'on') {
-                            & $PSMUX capture-pane -t $paneTarget -J 2>&1 | Out-Null
-                            $paneContent = (& $PSMUX show-buffer 2>&1 | Out-String)
-                            $paneData['content'] = $paneContent
-                        }
-
-                        $windowData.panes += $paneData
-                        $paneIndex++
-                    }
-                }
-
-                # Determine layout
-                $layout = (& $PSMUX display-message -t "${sessionName}:${winIndex}" -p '#{window_layout}' 2>&1 | Out-String).Trim()
-                $windowData['layout'] = $layout
-
-                # Is this the active window?
-                $activeFlag = (& $PSMUX display-message -t "${sessionName}:${winIndex}" -p '#{window_active}' 2>&1 | Out-String).Trim()
-                $windowData['active'] = ($activeFlag -eq '1')
-
-                $sessionData.windows += $windowData
-            }
-        }
-
-        $env_data.sessions += $sessionData
+    $sessionData = @{
+        name = $sessionName
+        windows = @()
     }
+
+    # Get windows using format flags for reliable parsing (no flag chars like *)
+    $windowLines = (& $PSMUX list-windows -t $sessionName -F '#{window_index}|#{window_name}|#{window_active}|#{window_layout}' 2>&1) | Out-String
+    foreach ($wline in ($windowLines -split "`n")) {
+        $wline = $wline.Trim()
+        if ([string]::IsNullOrWhiteSpace($wline)) { continue }
+
+        $parts = $wline -split '\|', 4
+        if ($parts.Count -lt 4) { continue }
+
+        $winIndex = $parts[0]
+        $winName = $parts[1]
+        $winActive = $parts[2]
+        $winLayout = $parts[3]
+
+        $windowData = @{
+            index = [int]$winIndex
+            name = $winName
+            layout = $winLayout
+            active = ($winActive -eq '1')
+            panes = @()
+        }
+
+        # Get panes using format flags for reliable parsing
+        $paneLines = (& $PSMUX list-panes -t "${sessionName}:${winIndex}" -F '#{pane_index}|#{pane_current_path}' 2>&1) | Out-String
+        foreach ($pline in ($paneLines -split "`n")) {
+            $pline = $pline.Trim()
+            if ([string]::IsNullOrWhiteSpace($pline)) { continue }
+
+            $pParts = $pline -split '\|', 2
+            $paneIdx = if ($pParts.Count -ge 1) { [int]$pParts[0] } else { 0 }
+            $paneDir = if ($pParts.Count -ge 2 -and $pParts[1]) { $pParts[1] } else { $env:USERPROFILE }
+
+            $paneData = @{
+                index = $paneIdx
+                directory = $paneDir
+            }
+
+            # Capture pane contents if enabled
+            $captureContents = (& $PSMUX show-options -gv '@resurrect-capture-pane-contents' 2>&1 | Out-String).Trim()
+            if ($captureContents -eq 'on') {
+                $paneTarget = "${sessionName}:${winIndex}.${paneIdx}"
+                & $PSMUX capture-pane -t $paneTarget -p 2>&1 | Out-Null
+                $paneContent = (& $PSMUX show-buffer 2>&1 | Out-String)
+                $paneData['content'] = $paneContent
+            }
+
+            $windowData.panes += $paneData
+        }
+
+        $sessionData.windows += $windowData
+    }
+
+    $env_data.sessions += $sessionData
 }
 
 # Save to JSON
