@@ -42,7 +42,7 @@ foreach ($line in ($sessions -split "`n")) {
         foreach ($wline in ($windows -split "`n")) {
             if ($wline -match '^(\d+):\s+(\S+)') {
                 $winIndex = $Matches[1]
-                $winName = $Matches[2]
+                $winName = $Matches[2] -replace '[*!~#-]+$', ''
                 $windowData = @{
                     index = [int]$winIndex
                     name = $winName
