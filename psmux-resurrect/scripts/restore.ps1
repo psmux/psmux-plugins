@@ -69,6 +69,10 @@ foreach ($session in $env_data.sessions) {
             & $PSMUX split-window -t "${sessionName}:${firstWinIdx}" -c $pDir 2>&1 | Out-Null
             Start-Sleep -Milliseconds 500
         }
+        # Replay the saved layout so split orientations and sizes match the original.
+        if ($firstWindow.layout) {
+            & $PSMUX select-layout -t "${sessionName}:${firstWinIdx}" $firstWindow.layout 2>&1 | Out-Null
+        }
     }
 
     # Create remaining windows
@@ -96,6 +100,10 @@ foreach ($session in $env_data.sessions) {
                 $pDir = if ($win.panes[$p].directory) { $win.panes[$p].directory } else { $env:USERPROFILE }
                 & $PSMUX split-window -t "${sessionName}:${lastWinIdx}" -c $pDir 2>&1 | Out-Null
                 Start-Sleep -Milliseconds 300
+            }
+            # Replay the saved layout so split orientations and sizes match the original.
+            if ($win.layout) {
+                & $PSMUX select-layout -t "${sessionName}:${lastWinIdx}" $win.layout 2>&1 | Out-Null
             }
         }
     }
