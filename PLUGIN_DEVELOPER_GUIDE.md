@@ -32,7 +32,7 @@ Psmux plugins use the same core mechanism as tmux plugins but with PowerShell in
 
 ### The Key Insight
 
-Psmux is **fully tmux-command-compatible** (76 commands). Your plugin works by executing psmux commands from PowerShell scripts, just as tmux plugins execute tmux commands from bash scripts.
+Psmux is **fully tmux-command-compatible** (83 commands). Your plugin works by executing psmux commands from PowerShell scripts, just as tmux plugins execute tmux commands from bash scripts.
 
 ```
 tmux plugin (bash):     tmux set-option -g mouse on
@@ -341,7 +341,7 @@ $val = (& $PSMUX show-options -g -v '@my-plugin-option' 2>&1 | Out-String).Trim(
 
 ### 3. Format Variables
 
-psmux supports 126+ format variables identical to tmux:
+psmux supports 140+ format variables identical to tmux:
 
 ```powershell
 # These all work the same as tmux
