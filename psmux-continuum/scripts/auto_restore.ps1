@@ -1,4 +1,5 @@
 #!/usr/bin/env pwsh
+# DO NOT EDIT — regenerated from psmux-continuum.ps1 on plugin load.
 # psmux-continuum: Auto-restore on server start
 $ErrorActionPreference = 'Continue'
 
