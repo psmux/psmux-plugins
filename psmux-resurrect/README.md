@@ -109,6 +109,61 @@ psmux-resurrect: restored 12 sessions, 34 windows in 4.2s (3 overwritten)
 
 The status is cleared automatically a few seconds after restore completes.
 
+## Restore Strategies
+
+For programs that maintain their own session state (editors, REPLs, TUI agents
+with internal session IDs), `pane_current_command` is rarely enough to restore
+a meaningful workspace. Restore strategies let a per-program script compute the
+actual command to send to the pane at restore time.
+
+This is a port of [tmux-resurrect's strategies mechanism](https://github.com/tmux-plugins/tmux-resurrect/blob/master/docs/restoring_vim_and_neovim_sessions.md).
+
+### Activate a strategy
+
+```tmux
+# Use the bundled nvim_session strategy when restoring nvim panes
+set -g @resurrect-strategy-nvim 'session'
+```
+
+The general form is `@resurrect-strategy-<program> '<strategy-name>'`, where
+`<program>` is the basename of `pane_current_command` (without `.exe`) and
+`<strategy-name>` selects which strategy file to use.
+
+### Lookup order
+
+At restore time, `<program>_<strategy-name>.ps1` is searched in:
+
+1. `~/.psmux/strategies/<program>_<strategy>.ps1` — your own strategies
+2. `<plugin>/strategies/<program>_<strategy>.ps1` — strategies shipped with the plugin
+
+The first existing file wins, so user strategies override bundled ones.
+
+### Strategy contract
+
+A strategy script receives two positional arguments and writes one line to
+stdout (the command that will be sent to the restored pane):
+
+```powershell
+# ~/.psmux/strategies/<program>_<strategy>.ps1
+param(
+    [Parameter(Mandatory)] [string] $OriginalCommand,
+    [Parameter(Mandatory)] [string] $Directory
+)
+
+# Compute the restore command, e.g. by querying tool-specific state in $Directory.
+# Echo $OriginalCommand if you cannot improve on the default.
+'mytool --resume <id>'
+```
+
+Strategy failures (non-zero exit, empty stdout, exceptions) silently fall back
+to the original saved command, so a broken strategy never blocks a restore.
+
+### Bundled strategies
+
+| Strategy | Activated by | Behavior |
+|----------|-----------------------------------|----------|
+| `nvim_session` | `set -g @resurrect-strategy-nvim 'session'` | Restores `nvim -S` if `Session.vim` exists in the pane's directory (e.g. via [vim-obsession](https://github.com/tpope/vim-obsession)); otherwise falls back to bare `nvim`. |
+
 ## Save File Format
 
 Saves are stored as JSON files with timestamps. The `last` file always points to the most recent save. A maximum of 20 backups are kept; older files are automatically pruned.
@@ -142,7 +197,7 @@ Duplicate saves are skipped when the environment has not changed.
 | Pane titles | Yes | Yes |
 | Backup rotation | 30 day expiry | Keep latest 20 |
 | Save dedup | symlink diff check | JSON structural compare |
-| Vim/Neovim strategy | Special Session.vim handling | Process restore via command match |
+| Vim/Neovim strategy | Special Session.vim handling | Restore strategies (port; bundled `nvim_session`) |
 | Grouped sessions | Yes | Not applicable (Windows) |
 | Hooks | 4 hook points | Planned |
 
