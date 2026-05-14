@@ -5,6 +5,19 @@
 #           window flags, active window selection
 $ErrorActionPreference = 'Continue'
 
+# Detach from any inherited psmux/tmux nesting context. This script intentionally
+# creates new sessions on the running server; we are not nesting a child psmux
+# inside a parent. Without this, child `psmux new-session` invocations refuse
+# to run with "sessions should be nested with care, unset PSMUX_SESSION to force"
+# whenever restore.ps1 is invoked from a context that inherited PSMUX_SESSION,
+# TMUX, etc. - which includes any manual invocation from a pwsh inside a running
+# psmux pane (Prefix+Ctrl-r works because psmux strips these for hook execution,
+# but `& restore.ps1` from the cmdline does not).
+$env:PSMUX_SESSION = $null
+$env:PSMUX_TARGET_SESSION = $null
+$env:TMUX = $null
+$env:TMUX_PANE = $null
+
 function Get-PsmuxBin {
     foreach ($n in @('psmux','pmux','tmux')) {
         $b = Get-Command $n -ErrorAction SilentlyContinue
