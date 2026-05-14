@@ -64,6 +64,38 @@ set -g @resurrect-processes ':all:'
 set -g @resurrect-processes '"~rails server" "~npm start"'
 ```
 
+## Restore Progress Indicator
+
+During restore, the plugin writes per-session progress into the
+`@resurrect-status` user option (and a no-fade `display-message -d 0` toast).
+Add `#{@resurrect-status}` to your `status-right` to see a persistent progress
+bar that updates per session instead of relying on the toast alone:
+
+```tmux
+set -g status-right '#{@resurrect-status} | %H:%M'
+```
+
+While restoring:
+
+```
+psmux-resurrect: restoring [######--------] 3/7  devbox
+```
+
+On completion the status briefly shows a summary, then clears:
+
+```
+psmux-resurrect: restored 7 sessions, 23 windows in 3.1s
+```
+
+Skipped sessions (already running) and failures are reported in the summary
+too:
+
+```
+psmux-resurrect: restored 0/12, skipped 12 (already running)
+```
+
+The status is cleared automatically a few seconds after restore completes.
+
 ## Save File Format
 
 Saves are stored as JSON files with timestamps. The `last` file always points to the most recent save. A maximum of 20 backups are kept; older files are automatically pruned.
