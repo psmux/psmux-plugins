@@ -5,6 +5,13 @@
 #           window flags, active window selection
 $ErrorActionPreference = 'Continue'
 
+# psmux refuses `new-session` when PSMUX_SESSION/PSMUX_ACTIVE is set
+# (psmux/src/main.rs:627), even with -d which cannot nest a UI. This
+# script only issues detached new-session calls, so opt out of the guard
+# via the documented override (psmux/src/main.rs:3120). Preserves
+# PSMUX_TARGET_SESSION (server routing) and tool-detection signals.
+$env:PSMUX_ALLOW_NESTING = '1'
+
 function Get-PsmuxBin {
     foreach ($n in @('psmux','pmux','tmux')) {
         $b = Get-Command $n -ErrorAction SilentlyContinue
