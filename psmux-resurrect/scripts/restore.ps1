@@ -25,9 +25,17 @@ $PSMUX = Get-PsmuxBin
 # --- Progress indicator helpers ---
 # A persistent message is exposed via the @resurrect-status user option so
 # users can render it in status-right with #{@resurrect-status}. We also
-# push the same string via display-message -d 0 so users without that
-# integration still see it (no fading).
+# push the same string via display-message so users without that integration
+# still see it as a toast.
+#
+# NOTE: psmux interprets `display-message -d 0` as "0ms = never show" (the
+# guard in server/mod.rs reads `if elapsed < display_time`, so 0 always
+# fails). tmux treats 0 as "indefinite"; psmux does not. We use a large
+# duration (60s) instead so the toast stays put long enough to outlast a
+# normal restore loop; each successive Show-Progress call refreshes it.
 $BAR_WIDTH = 14
+$PROGRESS_TOAST_MS = 60000
+$SUMMARY_TOAST_MS = 5000
 
 function Set-ResurrectStatus([string]$msg) {
     & $PSMUX set-option -g '@resurrect-status' $msg 2>&1 | Out-Null
@@ -50,7 +58,7 @@ function Show-Progress([int]$current, [int]$total, [string]$sessionName) {
     $bar = Format-ProgressBar -current $current -total $total
     $msg = "psmux-resurrect: restoring $bar $current/$total  $sessionName"
     Set-ResurrectStatus $msg
-    & $PSMUX display-message -d 0 $msg 2>&1 | Out-Null
+    & $PSMUX display-message -d $PROGRESS_TOAST_MS $msg 2>&1 | Out-Null
 }
 
 # Resolve save directory (support @resurrect-dir option)
@@ -280,11 +288,11 @@ try {
     }
 
     Set-ResurrectStatus $summary
-    & $PSMUX display-message $summary 2>&1 | Out-Null
+    & $PSMUX display-message -d $SUMMARY_TOAST_MS $summary 2>&1 | Out-Null
     & $PSMUX refresh-client -S 2>&1 | Out-Null
 
-    # Keep the persistent status visible briefly, then clear so status-right returns to normal
-    Start-Sleep -Seconds 5
+    # Keep the persistent status visible for the same window as the toast, then clear
+    Start-Sleep -Milliseconds $SUMMARY_TOAST_MS
 }
 finally {
     Clear-ResurrectStatus
