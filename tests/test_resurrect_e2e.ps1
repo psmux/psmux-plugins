@@ -371,11 +371,59 @@ if ($winCountBefore -eq $winCountAfter) { Write-Pass "Idempotent: session unchan
 else { Write-Fail "Session modified on re-restore: $winCountBefore -> $winCountAfter" }
 
 # ===================================================================
+# PART 3b: Restore from nested psmux context
+# ===================================================================
+Write-Host "`n[Test 21] Restore tolerates inherited PSMUX_SESSION/TMUX context" -ForegroundColor Yellow
+# Regression: when restore.ps1 inherits PSMUX_SESSION / PSMUX_TARGET_SESSION /
+# TMUX / TMUX_PANE from its parent - which happens for any direct invocation
+# from a pwsh running inside a psmux pane - psmux's nesting guard refused the
+# inner `new-session -d` calls with "sessions should be nested with care".
+# restore.ps1 sets PSMUX_ALLOW_NESTING=1 in its own process scope to opt out
+# of that guard while preserving PSMUX_TARGET_SESSION and tool-detection vars.
+
+# Tear down the live session so restore has work to do
+& $PSMUX kill-session -t $SESSION 2>&1 | Out-Null
+Start-Sleep -Seconds 2
+Remove-Item "$psmuxDir\$SESSION.*" -Force -EA SilentlyContinue
+
+& $PSMUX has-session -t $SESSION 2>$null
+if ($LASTEXITCODE -eq 0) { Write-Fail "Setup: could not kill $SESSION before nested-context test" }
+
+# Simulate the env a pwsh sees from inside a running psmux pane.
+# These get inherited by the child `pwsh -File restore.ps1` process below.
+$prevEnv = @{
+    PSMUX_SESSION        = $env:PSMUX_SESSION
+    PSMUX_TARGET_SESSION = $env:PSMUX_TARGET_SESSION
+    TMUX                 = $env:TMUX
+    TMUX_PANE            = $env:TMUX_PANE
+}
+$env:PSMUX_SESSION        = 'parent_pane_session'
+$env:PSMUX_TARGET_SESSION = 'parent_pane_session'
+$env:TMUX                 = '/tmp/psmux-fake/default,1234,0'
+$env:TMUX_PANE            = '%0'
+
+try {
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $RESTORE_SCRIPT 2>&1 | Out-Null
+    Start-Sleep -Seconds 5
+
+    if (Wait-Session $SESSION 20000) {
+        Write-Pass "Restore succeeded under inherited PSMUX_SESSION/TMUX"
+    } else {
+        Write-Fail "Restore failed under inherited PSMUX_SESSION/TMUX (PSMUX_ALLOW_NESTING bypass regression)"
+    }
+} finally {
+    $env:PSMUX_SESSION        = $prevEnv.PSMUX_SESSION
+    $env:PSMUX_TARGET_SESSION = $prevEnv.PSMUX_TARGET_SESSION
+    $env:TMUX                 = $prevEnv.TMUX
+    $env:TMUX_PANE            = $prevEnv.TMUX_PANE
+}
+
+# ===================================================================
 # PART 4: Backup Rotation Test
 # ===================================================================
 Write-Host "`n--- PART 4: Backup Rotation ---" -ForegroundColor Cyan
 
-Write-Host "`n[Test 21] Backup rotation keeps max 20" -ForegroundColor Yellow
+Write-Host "`n[Test 22] Backup rotation keeps max 20" -ForegroundColor Yellow
 # Create 25 fake save files
 for ($i = 1; $i -le 25; $i++) {
     $fakeTs = "20250101_{0:D6}" -f $i
@@ -412,7 +460,7 @@ $SESSION_TUI = "resurrect_tui_proof"
 & $PSMUX kill-session -t $SESSION_TUI 2>&1 | Out-Null
 Start-Sleep -Milliseconds 500
 
-Write-Host "`n[Test 22] TUI: Save and restore with real visible window" -ForegroundColor Yellow
+Write-Host "`n[Test 23] TUI: Save and restore with real visible window" -ForegroundColor Yellow
 
 # Launch a visible psmux window (this also starts a server if needed)
 $proc = Start-Process -FilePath $PSMUX -ArgumentList "new-session","-s",$SESSION_TUI -PassThru
@@ -482,7 +530,7 @@ Remove-Item "$psmuxDir\$TCP_SESSION.*" -Force -EA SilentlyContinue
 if (-not (Wait-Session $TCP_SESSION)) {
     Write-Fail "TCP test session failed to create"
 } else {
-    Write-Host "`n[Test 23] TCP: Commands work on restored session" -ForegroundColor Yellow
+    Write-Host "`n[Test 24] TCP: Commands work on restored session" -ForegroundColor Yellow
 
     # Save, kill, restore
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $SAVE_SCRIPT 2>&1 | Out-Null
