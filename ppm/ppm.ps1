@@ -60,6 +60,24 @@ function Invoke-Psmux {
     & $script:PSMUX @Args 2>&1
 }
 
+# --- Status toast helpers ---
+# Use a finite duration that outlasts each step; successive Show-PpmStatus
+# calls refresh the toast as work progresses.
+$script:PROGRESS_TOAST_MS = 60000
+
+function Show-PpmStatus {
+    param([string]$Message, [int]$DurationMs = $script:PROGRESS_TOAST_MS)
+    & $script:PSMUX display-message -d $DurationMs $Message 2>&1 | Out-Null
+}
+
+# Overwrite any lingering progress toast with a near-instant blank so the
+# result popup (from captured stdout) isn't sharing the screen with a stale
+# "Installing ..." status. The blank toast expires within ~1ms, so by the
+# time the popup renders the status bar is clear.
+function Clear-PpmStatus {
+    & $script:PSMUX display-message -d 1 ' ' 2>&1 | Out-Null
+}
+
 # --- Parse @plugin declarations from psmux options ---
 function Get-DeclaredPlugins {
     param([string]$SessionTarget)
@@ -425,15 +443,19 @@ function Install-AllPlugins {
         return
     }
 
+    Show-PpmStatus "PPM: Installing $($plugins.Count) plugin(s)..."
     Write-Host ""
     Write-Host "PPM - Installing plugins..." -ForegroundColor Magenta
     Write-Host ("=" * 50) -ForegroundColor Magenta
 
     $installed = 0
     foreach ($spec in $plugins) {
+        $name = ($spec -split '/')[-1]
+        Show-PpmStatus "PPM: Installing $name..."
         if (Install-Plugin $spec) { $installed++ }
     }
 
+    Clear-PpmStatus
     Write-Host ("=" * 50) -ForegroundColor Magenta
     Write-Host "PPM: $installed/$($plugins.Count) plugins installed." -ForegroundColor Magenta
     Write-Host ""
@@ -461,11 +483,15 @@ function Update-AllPlugins {
         return
     }
 
+    Show-PpmStatus "PPM: Updating $($dirs.Count) plugin(s)..."
+
     foreach ($dir in $dirs) {
+        Show-PpmStatus "PPM: Updating $($dir.Name)..."
         $spec = $specByName[$dir.Name]
         Update-Plugin -PluginPath $dir.FullName -Spec $spec
     }
 
+    Clear-PpmStatus
     Write-Host ("=" * 50) -ForegroundColor Magenta
     Write-Host "PPM: Update complete." -ForegroundColor Magenta
     Write-Host ""
@@ -476,6 +502,7 @@ function Remove-UnusedPlugins {
     $plugins = Get-DeclaredPlugins
     $declaredNames = $plugins | ForEach-Object { ($_ -split '/')[-1] }
 
+    Show-PpmStatus "PPM: Cleaning unused plugins..."
     Write-Host ""
     Write-Host "PPM - Cleaning unused plugins..." -ForegroundColor Magenta
     Write-Host ("=" * 50) -ForegroundColor Magenta
@@ -486,6 +513,7 @@ function Remove-UnusedPlugins {
     $removed = 0
     foreach ($dir in $dirs) {
         if ($dir.Name -notin $declaredNames) {
+            Show-PpmStatus "PPM: Removing $($dir.Name)..."
             Write-Host "  Removing: $($dir.Name)" -ForegroundColor Yellow
             Remove-Item -Recurse -Force $dir.FullName -ErrorAction SilentlyContinue
             # Also remove activation lines from config
@@ -494,6 +522,7 @@ function Remove-UnusedPlugins {
         }
     }
 
+    Clear-PpmStatus
     if ($removed -eq 0) {
         Write-Host "  All plugins are in use." -ForegroundColor Green
     } else {
