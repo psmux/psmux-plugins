@@ -61,6 +61,7 @@ Start psmux and press `Prefix + I` (capital I) to install.
 | [**psmux-theme-nord**](psmux-theme-nord/) | Nord arctic theme | [nord-tmux](https://github.com/arcticicestudio/nord-tmux) |
 | [**psmux-theme-tokyonight**](psmux-theme-tokyonight/) | Tokyo Night theme (3 styles) | [tokyonight.nvim](https://github.com/folke/tokyonight.nvim) |
 | [**psmux-theme-gruvbox**](psmux-theme-gruvbox/) | Gruvbox retro theme (dark/light) | [tmux-gruvbox](https://github.com/egel/tmux-gruvbox) |
+| [**psmux-theme-warm-burnout**](psmux-theme-warm-burnout/) | Warm Burnout theme (dark/light) | [felipefdl/warm-burnout](https://github.com/felipefdl/warm-burnout) |
 
 ---
 

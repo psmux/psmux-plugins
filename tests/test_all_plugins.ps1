@@ -55,7 +55,7 @@ $plugins = @(
 )
 $themes = @(
     'psmux-theme-dracula', 'psmux-theme-catppuccin', 'psmux-theme-nord',
-    'psmux-theme-tokyonight', 'psmux-theme-gruvbox'
+    'psmux-theme-tokyonight', 'psmux-theme-gruvbox', 'psmux-theme-warm-burnout'
 )
 
 foreach ($plugin in ($plugins + $themes)) {
