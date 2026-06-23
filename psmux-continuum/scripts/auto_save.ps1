@@ -49,10 +49,14 @@ try {
     while ($true) {
         Start-Sleep -Seconds $IntervalSeconds
 
-        # Check if psmux server is still running
+        # Check if psmux server is still running.
+        # NOTE: psmux returns exit 0 with EMPTY output when no server exists, so the
+        # exit-code check alone never fires -- the loop would run forever and (without the
+        # resurrect 0-session guard) drive empty-snapshot writes. Treat empty output as
+        # "no server" too. ($sessions is only used for this liveness check, never saved.)
         $sessions = & $PSMUX ls 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "psmux-continuum: Server not running, stopping auto-save." -ForegroundColor Yellow
+        if ($LASTEXITCODE -ne 0 -or -not $sessions.Trim()) {
+            Write-Host "psmux-continuum: No psmux server, stopping auto-save." -ForegroundColor Yellow
             break
         }
 
