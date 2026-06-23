@@ -130,6 +130,23 @@ foreach ($line in ($sessionLines -split "`n")) {
     $env_data.sessions += $sessionData
 }
 
+# Guard: never persist a 0-session snapshot.
+# psmux returns exit 0 with empty output when no server is running (which is also why the
+# capture loop above retries on empty), so a 0-session capture almost always means "the
+# server is down", not "the user has no sessions" -- tmux/psmux tears the server down when
+# its last session goes. Writing it would create a useless restore point AND repoint 'last'
+# to it; the 20-slot rotation then evicts the good snapshots, silently destroying the
+# ability to resurrect. We bail here -- after the capture loop but before dedup, the write
+# and the 'last' repoint -- so an empty capture has no side effects.
+# (Known limitation: a PARTIAL capture -- a session reported mid-startup with incomplete
+# windows/panes -- has >=1 session, so it passes this guard and is still written. Closing
+# that needs an expected-session-count signal we don't have here; tracked as a follow-up.)
+if (@($env_data.sessions).Count -eq 0) {
+    & $PSMUX display-message "No sessions to save, skipping." 2>&1 | Out-Null
+    Write-Host "psmux-resurrect: No sessions captured, skipping save (server likely down)." -ForegroundColor Yellow
+    exit 0
+}
+
 # Save to JSON
 $jsonContent = $env_data | ConvertTo-Json -Depth 10
 
