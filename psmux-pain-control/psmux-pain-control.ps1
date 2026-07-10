@@ -38,8 +38,6 @@ if ($resizeOpt -match '^\d+$') { $resizeStep = [int]$resizeOpt }
 
 # =============================================================================
 # PANE RESIZING (Alt + vim keys)
-# NOTE: psmux treats key bindings case-insensitively (H == h), so we use
-# Alt+h/j/k/l instead of Shift (H/J/K/L) for resize to avoid conflicts.
 # =============================================================================
 & $PSMUX bind-key -r M-h resize-pane -L $resizeStep 2>&1 | Out-Null
 & $PSMUX bind-key -r M-j resize-pane -D $resizeStep 2>&1 | Out-Null
