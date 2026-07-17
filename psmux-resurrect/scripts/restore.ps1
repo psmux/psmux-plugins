@@ -133,9 +133,19 @@ try {
         return $false
     }
 
+    # Check @resurrect-overwrite option: default off, preserves the existing
+    # skip-if-running behavior. When 'on', a session with the same saved name
+    # is killed and recreated from the save instead of being left alone.
+    $overwriteExisting = $false
+    try {
+        $overwriteOpt = (& $PSMUX show-options -gv '@resurrect-overwrite' 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $overwriteOpt -eq 'on') { $overwriteExisting = $true }
+    } catch {}
+
     $totalSessions = $env_data.sessions.Count
     $startTime = Get-Date
     $restoredCount = 0
+    $overwrittenCount = 0
     $skipped = @()
     $failed = @()
     $totalWindows = 0
@@ -156,12 +166,32 @@ try {
 
         Show-Progress -current ($si + 1) -total $totalSessions -sessionName $sessionName
 
-        # Check if session already exists (idempotent)
+        # Check if session already exists
         $null = & $PSMUX has-session -t $sessionName 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "  Session '$sessionName' already exists, skipping" -ForegroundColor Yellow
-            $skipped += $sessionName
-            continue
+            if (-not $overwriteExisting) {
+                Write-Host "  Session '$sessionName' already exists, skipping" -ForegroundColor Yellow
+                $skipped += $sessionName
+                continue
+            }
+
+            Write-Host "  Session '$sessionName' already exists, overwriting (@resurrect-overwrite on)" -ForegroundColor Yellow
+            & $PSMUX kill-session -t $sessionName 2>&1 | Out-Null
+
+            # Wait for the kill to land before recreating; a session name that's
+            # still tearing down would make the new-session below silently no-op.
+            $killed = $false
+            for ($k = 0; $k -lt 20; $k++) {
+                Start-Sleep -Milliseconds 100
+                $null = & $PSMUX has-session -t $sessionName 2>&1
+                if ($LASTEXITCODE -ne 0) { $killed = $true; break }
+            }
+            if (-not $killed) {
+                Write-Host "  Failed to kill existing session '$sessionName' for overwrite" -ForegroundColor Red
+                $failed += $sessionName
+                continue
+            }
+            $overwrittenCount++
         }
 
         # Create session with first window
@@ -297,6 +327,9 @@ try {
     $elapsedStr = [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0:F1}s", $elapsed)
 
     $summary = "psmux-resurrect: restored $restoredCount sessions, $totalWindows windows in $elapsedStr"
+    if ($overwrittenCount -gt 0) {
+        $summary += " ($overwrittenCount overwritten)"
+    }
     if ($skipped.Count -gt 0) {
         $summary = "psmux-resurrect: restored $restoredCount/$totalSessions, skipped $($skipped.Count) (already running)"
     }

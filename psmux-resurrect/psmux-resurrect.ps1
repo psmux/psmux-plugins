@@ -24,6 +24,7 @@
 #   set -g @resurrect-processes 'ssh python node'
 #   set -g @resurrect-processes 'false'           # disable process restore
 #   set -g @resurrect-processes ':all:'           # restore all (dangerous)
+#   set -g @resurrect-overwrite 'on'              # kill + recreate existing sessions on restore (default off = skip)
 # =============================================================================
 
 $ErrorActionPreference = 'Continue'

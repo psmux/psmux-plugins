@@ -31,7 +31,7 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 
 ## What Gets Restored
 
-- All sessions (idempotent: existing sessions are skipped)
+- All sessions (idempotent by default: existing sessions are skipped, see `@resurrect-overwrite` below to change this)
 - Windows with correct names
 - Panes in correct working directories
 - Exact layout geometry via `select-layout` replay
@@ -62,6 +62,12 @@ set -g @resurrect-processes ':all:'
 
 # Use tilde for fuzzy matching (restore if command contains the string)
 set -g @resurrect-processes '"~rails server" "~npm start"'
+
+# Overwrite sessions that are already running instead of skipping them.
+# Default is off, matching the current skip-if-running behavior. When 'on',
+# a running session with a name that matches the save is killed and
+# recreated from the save instead of being left alone.
+set -g @resurrect-overwrite 'on'
 ```
 
 ## Restore Progress Indicator
@@ -92,6 +98,13 @@ too:
 
 ```
 psmux-resurrect: restored 0/12, skipped 12 (already running)
+```
+
+With `@resurrect-overwrite 'on'`, sessions that were killed and recreated are
+counted separately from freshly-created ones:
+
+```
+psmux-resurrect: restored 12 sessions, 34 windows in 4.2s (3 overwritten)
 ```
 
 The status is cleared automatically a few seconds after restore completes.
