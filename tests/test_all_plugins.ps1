@@ -121,6 +121,11 @@ foreach ($plugin in ($plugins + $themes)) {
     Check "$plugin.ps1 exists" (Test-Path $ps1Path)
 }
 
+# psmux-vim-navigator ships only a .ps1 entry point (no plugin.conf) since it
+# needs to launch a background poller process -- checked separately from the
+# $plugins array above, which assumes a plugin.conf.
+Check "psmux-vim-navigator.ps1 exists" (Test-Path (Join-Path $PLUGIN_DIR 'psmux-vim-navigator\psmux-vim-navigator.ps1'))
+
 # Check scripts/ directories for plugins that reference them
 Write-Host "`n--- Phase 1c: Check referenced scripts ---" -ForegroundColor Yellow
 $scriptChecks = @{
@@ -130,6 +135,7 @@ $scriptChecks = @{
     'psmux-cpu' = @('scripts/system_stats.ps1', 'scripts/cpu_info.ps1')
     'psmux-logging' = @('scripts/toggle_logging.ps1', 'scripts/capture_screen.ps1', 'scripts/capture_history.ps1')
     'psmux-sidebar' = @('scripts/toggle_sidebar.ps1')
+    'psmux-vim-navigator' = @('scripts/poll-vim-state.ps1')
 }
 
 foreach ($plugin in $scriptChecks.Keys) {
@@ -355,7 +361,7 @@ source-file $($themeConf -replace '\\','/')
 # =============================================================================
 Write-Host "`n--- Phase 5: PowerShell Script Syntax Check ---" -ForegroundColor Yellow
 
-foreach ($plugin in ($plugins + $themes + @('ppm'))) {
+foreach ($plugin in ($plugins + $themes + @('ppm', 'psmux-vim-navigator'))) {
     $ps1Path = Join-Path $PLUGIN_DIR "$plugin\$plugin.ps1"
     if (-not (Test-Path $ps1Path)) {
         # Try alternate names

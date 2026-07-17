@@ -46,6 +46,7 @@ Start psmux and press `Prefix + I` (capital I) to install.
 | [**psmux-resurrect**](psmux-resurrect/) | Save/restore sessions | [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) |
 | [**psmux-continuum**](psmux-continuum/) | Auto-save/restore | [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) |
 | [**psmux-pain-control**](psmux-pain-control/) | Better pane navigation | [tmux-pain-control](https://github.com/tmux-plugins/tmux-pain-control) |
+| [**psmux-vim-navigator**](psmux-vim-navigator/) | Vim-aware prefix-less pane navigation | [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator) |
 | [**psmux-prefix-highlight**](psmux-prefix-highlight/) | Prefix key indicator | [tmux-prefix-highlight](https://github.com/tmux-plugins/tmux-prefix-highlight) |
 | [**psmux-battery**](psmux-battery/) | Battery status bar | [tmux-battery](https://github.com/tmux-plugins/tmux-battery) |
 | [**psmux-cpu**](psmux-cpu/) | CPU/memory status bar | [tmux-cpu](https://github.com/tmux-plugins/tmux-cpu) |
@@ -95,6 +96,13 @@ Start psmux and press `Prefix + I` (capital I) to install.
 | `Prefix + Alt-h/j/k/l` | Resize panes |
 | `Prefix + \|` or `\` | Split horizontal |
 | `Prefix + -` or `_` | Split vertical |
+
+### psmux-vim-navigator
+| Key | Action |
+|-----|--------|
+| `Ctrl-h/j/k/l` (no prefix) | Navigate panes, or pass through to vim/nvim/fzf if it's the active pane's program |
+| `Ctrl-\` (no prefix) | Previous pane / passed through to vim |
+| `Prefix + Ctrl-l` | Clear screen (restored, since Ctrl-l is claimed above) |
 
 ### psmux-logging
 | Key | Action |
