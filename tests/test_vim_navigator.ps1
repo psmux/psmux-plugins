@@ -56,7 +56,7 @@ if (Test-Path (Join-Path $PLUGIN_DIR "README.md")) { Write-Pass "README.md exist
 foreach ($script in @($PLUGIN_PS1, $POLL_SCRIPT)) {
     if (-not (Test-Path $script)) { continue }
     $tokens = $null; $errors = $null
-    [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
+    $null = [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
     $name = Split-Path -Leaf $script
     if ($errors.Count -eq 0) { Write-Pass "${name}: valid PowerShell syntax" }
     else { Write-Fail "${name}: $($errors.Count) syntax errors: $($errors[0].Message)" }
@@ -123,7 +123,7 @@ Write-Host "`n--- PART 3: Vim-Detection Pattern Matching ---" -ForegroundColor C
 
 $vimPattern = '(^|/)g?(view|l?n?vim?x?|fzf)(diff)?(\.exe)?$'
 $idleCmd = (& $PSMUX display-message -t $SESSION -p '#{pane_current_command}' 2>&1 | Out-String).Trim()
-if ($idleCmd -and $idleCmd -ne 'shell') {
+if ($idleCmd -and $idleCmd -ne 'shell' -and $idleCmd -notmatch 'no server|no session|error') {
     Write-Pass "idle pane reports real shell name ('$idleCmd', not the 'shell' placeholder -- requires psmux/psmux#299 fix, commit b003802)"
 } else {
     Write-Fail "idle pane reports '$idleCmd' -- vim-detection needs the immediate-child pane_current_command fix from psmux/psmux#299"

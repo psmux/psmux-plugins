@@ -45,11 +45,14 @@ param(
 )
 
 function Invoke-Psmux {
-    param([string[]]$Args)
+    # NOTE: do not name this parameter $Args. PowerShell's automatic $args
+    # variable shadows a parameter of that name on positional calls, so the
+    # parameter silently binds nothing and every psmux call runs bare.
+    param([string[]]$CmdArgs)
     if ($Socket) {
-        & $PsmuxBin -L $Socket @Args 2>&1
+        & $PsmuxBin -L $Socket @CmdArgs 2>&1
     } else {
-        & $PsmuxBin @Args 2>&1
+        & $PsmuxBin @CmdArgs 2>&1
     }
 }
 
