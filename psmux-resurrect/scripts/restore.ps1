@@ -236,11 +236,21 @@ try {
             if ($win.zoomed -eq $true -and $win.panes.Count -gt 1 -and $activePaneId) {
                 & $PSMUX resize-pane -Z -t $activePaneId 2>&1 | Out-Null
             }
+
+            # Report this window's real active pane id back to the caller: the
+            # end-of-session "select active window" step below targets a window by
+            # one of its pane ids, and psmux's target resolution for select-window
+            # also re-activates that specific pane as a side effect (confirmed
+            # against the real binary: `select-window -t <pane-id>` makes that exact
+            # pane active). Without this, selecting the active window can silently
+            # clobber the active-pane choice made above whenever the active pane
+            # isn't the window's first pane.
+            return $activePaneId
         }
 
         # Restore first window
         $windowPaneIds = @($firstPaneId)
-        Restore-WindowPanes -win $firstWindow -initialPaneId $firstPaneId
+        $windowActivePaneIds = @(Restore-WindowPanes -win $firstWindow -initialPaneId $firstPaneId)
 
         # Create and restore remaining windows
         $remainingWindows = $session.windows | Select-Object -Skip 1
@@ -257,7 +267,7 @@ try {
             }
             $winPaneId = Get-PaneId (& $PSMUX new-window @newWinArgs -P -F '#{pane_id}' 2>&1)
             $windowPaneIds += $winPaneId
-            Restore-WindowPanes -win $win -initialPaneId $winPaneId
+            $windowActivePaneIds += (Restore-WindowPanes -win $win -initialPaneId $winPaneId)
         }
 
         # Select the active window (do this last so it sticks).
@@ -266,6 +276,13 @@ try {
             if ($savedWindows[$i].active -eq $true) {
                 if ($i -lt $windowPaneIds.Count -and $windowPaneIds[$i]) {
                     & $PSMUX select-window -t $windowPaneIds[$i] 2>&1 | Out-Null
+                    # select-window with a pane-id target also re-activates that
+                    # specific pane, which can be the wrong one within this window
+                    # (see comment in Restore-WindowPanes). Re-assert the window's
+                    # real active pane now that the window itself is selected.
+                    if ($i -lt $windowActivePaneIds.Count -and $windowActivePaneIds[$i]) {
+                        & $PSMUX select-pane -t $windowActivePaneIds[$i] 2>&1 | Out-Null
+                    }
                 }
                 break
             }
