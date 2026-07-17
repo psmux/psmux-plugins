@@ -60,6 +60,26 @@ function Invoke-Psmux {
     & $script:PSMUX @Args 2>&1
 }
 
+# --- Run git against a public GitHub URL without ever risking an interactive
+# credential prompt. GitHub answers 401 (not a clean 404) for a nonexistent
+# repo path, which makes git invoke the configured credential helper; if no
+# token is cached, Git Credential Manager opens an interactive sign-in
+# window. Disabling the helper and terminal prompts for the duration of the
+# call makes a missing repo fail fast with a clean error instead. See #25.
+function Invoke-GitNoPrompt {
+    param([Parameter(ValueFromRemainingArguments)]$GitArgs)
+    $prevPrompt = $env:GIT_TERMINAL_PROMPT
+    $prevGcm    = $env:GCM_INTERACTIVE
+    $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GCM_INTERACTIVE     = 'never'
+    try {
+        & git -c credential.helper= @GitArgs 2>&1
+    } finally {
+        $env:GIT_TERMINAL_PROMPT = $prevPrompt
+        $env:GCM_INTERACTIVE     = $prevGcm
+    }
+}
+
 # --- Status toast helpers ---
 # Use a finite duration that outlasts each step; successive Show-PpmStatus
 # calls refresh the toast as work progresses.
@@ -134,16 +154,23 @@ function Resolve-PluginSpec {
 
     if ($Spec -match '^https?://') {
         # Full URL
-        return @{ Name = $name; Url = $Spec; Path = $localPath; Org = $null }
+        return @{ Name = $name; Url = $Spec; Path = $localPath; Org = $null; MapFirst = $false }
     }
     elseif ($Spec -match '^([^/]+)/([^/]+)$') {
         # GitHub short form: owner/repo
         $org = $Matches[1]
-        return @{ Name = $name; Url = "https://github.com/$Spec.git"; Path = $localPath; Org = $org }
+        # If the owner is a known monorepo alias (e.g. 'psmux-plugins'), the
+        # individual-repo URL is guaranteed not to exist on GitHub, so probing
+        # it first only buys a doomed 401/404 round trip (and, without cached
+        # git credentials, a GCM sign-in prompt - see #25). Go straight to the
+        # monorepo instead. Raised as the sane follow-up in #16.
+        $mapFirst = $script:MONOREPO_MAP.ContainsKey($org)
+        return @{ Name = $name; Url = "https://github.com/$Spec.git"; Path = $localPath; Org = $org; MapFirst = $mapFirst }
     }
     else {
         # Just a name, assume psmux-plugins org
-        return @{ Name = $Spec; Url = "https://github.com/psmux-plugins/$Spec.git"; Path = $localPath; Org = 'psmux-plugins' }
+        $mapFirst = $script:MONOREPO_MAP.ContainsKey('psmux-plugins')
+        return @{ Name = $Spec; Url = "https://github.com/psmux-plugins/$Spec.git"; Path = $localPath; Org = 'psmux-plugins'; MapFirst = $mapFirst }
     }
 }
 
@@ -161,7 +188,7 @@ function Install-FromMonorepo {
 
     Write-Host "  Trying monorepo ($monorepo) ..." -ForegroundColor DarkCyan
     try {
-        git clone --depth 1 $cloneUrl $tmpDir 2>&1 | Out-Null
+        Invoke-GitNoPrompt clone --depth 1 $cloneUrl $tmpDir | Out-Null
     } catch {
         if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue }
         return $false
@@ -302,18 +329,26 @@ function Install-Plugin {
 
     Write-Host "  Installing: $($info.Name) ..." -ForegroundColor Cyan
 
-    # Try direct git clone first
     $cloned = $false
-    try {
-        git clone --depth 1 $info.Url $info.Path 2>&1 | Out-Null
-        if (Test-Path $info.Path) { $cloned = $true }
-    } catch {}
-
-    # Fallback: monorepo extraction if org is in MONOREPO_MAP
-    if (-not $cloned -and $info.Org -and $script:MONOREPO_MAP.ContainsKey($info.Org)) {
-        # Remove any partial clone artifacts
-        if (Test-Path $info.Path) { Remove-Item -Recurse -Force $info.Path -ErrorAction SilentlyContinue }
+    if ($info.MapFirst) {
+        # Known monorepo owner: the individual-repo URL is guaranteed to be a
+        # 404 (or a prompt-triggering 401 before that), so skip the doomed
+        # probe entirely and go straight to the monorepo.
         $cloned = Install-FromMonorepo -Org $info.Org -Name $info.Name -TargetPath $info.Path
+    } else {
+        # Try direct git clone first. Never risks an interactive credential
+        # prompt: a missing repo fails fast instead.
+        try {
+            Invoke-GitNoPrompt clone --depth 1 $info.Url $info.Path | Out-Null
+            if (Test-Path $info.Path) { $cloned = $true }
+        } catch {}
+
+        # Fallback: monorepo extraction if org is in MONOREPO_MAP
+        if (-not $cloned -and $info.Org -and $script:MONOREPO_MAP.ContainsKey($info.Org)) {
+            # Remove any partial clone artifacts
+            if (Test-Path $info.Path) { Remove-Item -Recurse -Force $info.Path -ErrorAction SilentlyContinue }
+            $cloned = Install-FromMonorepo -Org $info.Org -Name $info.Name -TargetPath $info.Path
+        }
     }
 
     if ($cloned -and (Test-Path $info.Path)) {
@@ -351,7 +386,7 @@ function Update-Plugin {
         Write-Host "  Updating: $name (from monorepo $($meta.monorepo)) ..." -ForegroundColor Cyan
         $tmpDir = Join-Path $env:TEMP "ppm-monorepo-$($meta.org)-$(Get-Random)"
         try {
-            git clone --depth 1 $meta.url $tmpDir 2>&1 | Out-Null
+            Invoke-GitNoPrompt clone --depth 1 $meta.url $tmpDir | Out-Null
             $subDir = Join-Path $tmpDir $meta.name
             if (Test-Path $subDir) {
                 # Remove old contents (except .monorepo.json) and copy new
