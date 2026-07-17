@@ -140,6 +140,16 @@ try {
     $failed = @()
     $totalWindows = 0
 
+    # Return the first whole-line pane id (%N) in $raw, or $null. Match whole
+    # lines only: stderr is merged in, so other output can contain a stray %N.
+    function Get-PaneId([object]$raw) {
+        foreach ($line in @($raw)) {
+            $t = "$line".Trim()
+            if ($t -match '^%\d+$') { return $t }
+        }
+        return $null
+    }
+
     for ($si = 0; $si -lt $totalSessions; $si++) {
         $session = $env_data.sessions[$si]
         $sessionName = $session.name
@@ -162,8 +172,10 @@ try {
             $env:USERPROFILE
         }
 
-        # Use the saved window name for the initial window
-        & $PSMUX new-session -d -s $sessionName -c $firstDir $(if ($firstWindow.name) { @('-n', $firstWindow.name) } else { @() }) 2>&1 | Out-Null
+        # Create the session's first window (named from the save) and capture its pane id.
+        $nameArg = if ($firstWindow.name) { @('-n', $firstWindow.name) } else { @() }
+        $out = & $PSMUX new-session -d -s $sessionName -c $firstDir @nameArg -P -F '#{pane_id}' 2>&1
+        $firstPaneId = Get-PaneId $out
 
         # Wait for session to be ready
         $ready = $false
@@ -178,61 +190,67 @@ try {
             continue
         }
 
-        # Get the actual base index used by the new session
-        $baseIdx = (& $PSMUX show-options -t $sessionName -gv base-index 2>&1 | Out-String).Trim()
-        if ([string]::IsNullOrWhiteSpace($baseIdx) -or $baseIdx -match 'unknown') { $baseIdx = "0" }
-        $baseIdx = [int]$baseIdx
-        $firstWinIdx = $baseIdx
-
-        # Helper: restore panes for a window target
+        # Restore a window's panes.
         function Restore-WindowPanes {
-            param($win, [string]$winTarget)
+            param($win, [string]$initialPaneId)
 
-            # Create additional panes
+            # Without the initial pane's id we can't target this window, so skip it.
+            if (-not $initialPaneId) { return }
+
+            # Ordered pane ids for this window: initial pane, then one per split,
+            # in creation order (1:1 with $win.panes). Split entries may be $null.
+            $paneIds = @($initialPaneId)
             if ($win.panes.Count -gt 1) {
                 for ($p = 1; $p -lt $win.panes.Count; $p++) {
                     $pDir = if ($win.panes[$p].directory) { $win.panes[$p].directory } else { $env:USERPROFILE }
-                    & $PSMUX split-window -t $winTarget -c $pDir 2>&1 | Out-Null
-                    Start-Sleep -Milliseconds 300
+                    $paneIds += Get-PaneId (& $PSMUX split-window -t $initialPaneId -c $pDir -P -F '#{pane_id}' 2>&1)
                 }
             }
 
             # Replay the saved layout so split orientations and sizes match the original
             if ($win.layout) {
-                & $PSMUX select-layout -t $winTarget $win.layout 2>&1 | Out-Null
+                & $PSMUX select-layout -t $initialPaneId $win.layout 2>&1 | Out-Null
             }
 
-            # Restore pane titles
-            foreach ($pane in $win.panes) {
-                if ($pane.title -and $pane.title -ne '') {
-                    & $PSMUX select-pane -t "${winTarget}.$($pane.index)" -T $pane.title 2>&1 | Out-Null
+            # Select the active pane last: select-pane -T and send-keys, used
+            # below, both move the active pane.
+            $activePaneId = $null
+            for ($ti = 0; $ti -lt $win.panes.Count; $ti++) {
+                $paneId = $paneIds[$ti]
+                if (-not $paneId) { continue }
+                $pane = $win.panes[$ti]
+                if ($pane.title) {
+                    & $PSMUX select-pane -t $paneId -T $pane.title 2>&1 | Out-Null
+                }
+                if ($pane.active -eq $true) { $activePaneId = $paneId }
+                if ($restoreProcesses -and $pane.command -and (Should-RestoreProcess $pane.command)) {
+                    & $PSMUX send-keys -t $paneId $pane.command Enter 2>&1 | Out-Null
+                    Start-Sleep -Milliseconds 200
                 }
             }
-
-            # Restore active pane for this window
-            $activePane = $win.panes | Where-Object { $_.active -eq $true } | Select-Object -First 1
-            if ($activePane) {
-                & $PSMUX select-pane -t "${winTarget}.$($activePane.index)" 2>&1 | Out-Null
+            if ($activePaneId) {
+                & $PSMUX select-pane -t $activePaneId 2>&1 | Out-Null
             }
 
-            # Restore zoomed state
-            if ($win.zoomed -eq $true -and $win.panes.Count -gt 1) {
-                & $PSMUX resize-pane -Z -t $winTarget 2>&1 | Out-Null
+            # Re-zoom the active pane (the pane that was zoomed).
+            if ($win.zoomed -eq $true -and $win.panes.Count -gt 1 -and $activePaneId) {
+                & $PSMUX resize-pane -Z -t $activePaneId 2>&1 | Out-Null
             }
 
-            # Restore running processes
-            if ($restoreProcesses) {
-                foreach ($pane in $win.panes) {
-                    if ($pane.command -and (Should-RestoreProcess $pane.command)) {
-                        & $PSMUX send-keys -t "${winTarget}.$($pane.index)" $pane.command Enter 2>&1 | Out-Null
-                        Start-Sleep -Milliseconds 200
-                    }
-                }
-            }
+            # Report this window's real active pane id back to the caller: the
+            # end-of-session "select active window" step below targets a window by
+            # one of its pane ids, and psmux's target resolution for select-window
+            # also re-activates that specific pane as a side effect (confirmed
+            # against the real binary: `select-window -t <pane-id>` makes that exact
+            # pane active). Without this, selecting the active window can silently
+            # clobber the active-pane choice made above whenever the active pane
+            # isn't the window's first pane.
+            return $activePaneId
         }
 
         # Restore first window
-        Restore-WindowPanes -win $firstWindow -winTarget "${sessionName}:${firstWinIdx}"
+        $windowPaneIds = @($firstPaneId)
+        $windowActivePaneIds = @(Restore-WindowPanes -win $firstWindow -initialPaneId $firstPaneId)
 
         # Create and restore remaining windows
         $remainingWindows = $session.windows | Select-Object -Skip 1
@@ -247,27 +265,26 @@ try {
             if ($win.name) {
                 $newWinArgs = @("-t", $sessionName, "-n", $win.name, "-c", $winDir)
             }
-            & $PSMUX new-window @newWinArgs 2>&1 | Out-Null
-            Start-Sleep -Milliseconds 500
-
-            # Get the actual index of the newly created window
-            $lastWinIdx = (& $PSMUX list-windows -t $sessionName -F '#{window_index}' 2>&1 | Out-String).Trim() -split "`n" | Select-Object -Last 1
-            $lastWinIdx = $lastWinIdx.Trim()
-
-            Restore-WindowPanes -win $win -winTarget "${sessionName}:${lastWinIdx}"
+            $winPaneId = Get-PaneId (& $PSMUX new-window @newWinArgs -P -F '#{pane_id}' 2>&1)
+            $windowPaneIds += $winPaneId
+            $windowActivePaneIds += (Restore-WindowPanes -win $win -initialPaneId $winPaneId)
         }
 
-        # Select the active window (do this last so it sticks)
-        $activeWin = $session.windows | Where-Object { $_.active -eq $true } | Select-Object -First 1
-        if ($activeWin) {
-            $currentWindows = (& $PSMUX list-windows -t $sessionName -F '#{window_index}' 2>&1 | Out-String).Trim() -split "`n"
-            $savedWindows = @($session.windows)
-            for ($i = 0; $i -lt $savedWindows.Count; $i++) {
-                if ($savedWindows[$i].active -eq $true -and $i -lt $currentWindows.Count) {
-                    $targetIdx = $currentWindows[$i].Trim()
-                    & $PSMUX select-window -t "${sessionName}:${targetIdx}" 2>&1 | Out-Null
-                    break
+        # Select the active window (do this last so it sticks).
+        $savedWindows = @($session.windows)
+        for ($i = 0; $i -lt $savedWindows.Count; $i++) {
+            if ($savedWindows[$i].active -eq $true) {
+                if ($i -lt $windowPaneIds.Count -and $windowPaneIds[$i]) {
+                    & $PSMUX select-window -t $windowPaneIds[$i] 2>&1 | Out-Null
+                    # select-window with a pane-id target also re-activates that
+                    # specific pane, which can be the wrong one within this window
+                    # (see comment in Restore-WindowPanes). Re-assert the window's
+                    # real active pane now that the window itself is selected.
+                    if ($i -lt $windowActivePaneIds.Count -and $windowActivePaneIds[$i]) {
+                        & $PSMUX select-pane -t $windowActivePaneIds[$i] 2>&1 | Out-Null
+                    }
                 }
+                break
             }
         }
 
