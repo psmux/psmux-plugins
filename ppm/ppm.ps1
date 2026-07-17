@@ -147,48 +147,85 @@ function Get-DeclaredPlugins {
 }
 
 # --- Resolve plugin spec to git URL and local path ---
+# Resolution order (see #16):
+#   1. Split the spec on '#' into (base, branch). branch, when present,
+#      is appended as `git clone --branch <name>` to whatever clone runs.
+#   2. The base is then resolved by shape:
+#        https://... / git@...        -> clone the URL directly
+#        owner/repo/subdir (3 seg)    -> clone github.com/owner/repo.git,
+#                                         extract subdir. No probe, no
+#                                         MONOREPO_MAP involvement.
+#        owner/repo (2 seg)           -> if owner is a known MONOREPO_MAP
+#                                         alias, clone the monorepo directly
+#                                         (MapFirst, see #25); otherwise try
+#                                         the direct repo first, falling back
+#                                         to MONOREPO_MAP on failure.
+#        bare name                    -> treated as psmux-plugins/<name>.
 function Resolve-PluginSpec {
     param([string]$Spec)
-    $name = $Spec.Split('/')[-1]
+
+    # Branch suffix applies uniformly to every shape below.
+    $branch = $null
+    $base = $Spec
+    $hashIdx = $Spec.IndexOf('#')
+    if ($hashIdx -ge 0) {
+        $base = $Spec.Substring(0, $hashIdx)
+        $branch = $Spec.Substring($hashIdx + 1)
+    }
+
+    $name = $base.Split('/')[-1]
     $localPath = Join-Path $PLUGIN_DIR $name
 
-    if ($Spec -match '^https?://') {
-        # Full URL
-        return @{ Name = $name; Url = $Spec; Path = $localPath; Org = $null; MapFirst = $false }
+    if ($base -match '^(https?://|git@)') {
+        # Full URL (https or SSH form): clone directly, no monorepo routing.
+        return @{ Name = $name; Url = $base; Path = $localPath; Org = $null; MapFirst = $false; Monorepo = $null; Branch = $branch }
     }
-    elseif ($Spec -match '^([^/]+)/([^/]+)$') {
+    elseif ($base -match '^([^/]+)/([^/]+)/([^/]+)$') {
+        # 3-segment: owner/repo/subdir. Clones github.com/owner/repo.git and
+        # extracts subdir directly - no probe, no MONOREPO_MAP involvement.
+        $owner = $Matches[1]; $repo = $Matches[2]; $subDir = $Matches[3]
+        $subLocalPath = Join-Path $PLUGIN_DIR $subDir
+        return @{ Name = $subDir; Url = "https://github.com/$owner/$repo.git"; Path = $subLocalPath; Org = $owner; MapFirst = $true; Monorepo = "$owner/$repo"; Branch = $branch }
+    }
+    elseif ($base -match '^([^/]+)/([^/]+)$') {
         # GitHub short form: owner/repo
         $org = $Matches[1]
         # If the owner is a known monorepo alias (e.g. 'psmux-plugins'), the
         # individual-repo URL is guaranteed not to exist on GitHub, so probing
         # it first only buys a doomed 401/404 round trip (and, without cached
         # git credentials, a GCM sign-in prompt - see #25). Go straight to the
-        # monorepo instead. Raised as the sane follow-up in #16.
+        # monorepo instead.
         $mapFirst = $script:MONOREPO_MAP.ContainsKey($org)
-        return @{ Name = $name; Url = "https://github.com/$Spec.git"; Path = $localPath; Org = $org; MapFirst = $mapFirst }
+        return @{ Name = $name; Url = "https://github.com/$base.git"; Path = $localPath; Org = $org; MapFirst = $mapFirst; Monorepo = $null; Branch = $branch }
     }
     else {
         # Just a name, assume psmux-plugins org
         $mapFirst = $script:MONOREPO_MAP.ContainsKey('psmux-plugins')
-        return @{ Name = $Spec; Url = "https://github.com/psmux-plugins/$Spec.git"; Path = $localPath; Org = 'psmux-plugins'; MapFirst = $mapFirst }
+        return @{ Name = $name; Url = "https://github.com/psmux-plugins/$name.git"; Path = $localPath; Org = 'psmux-plugins'; MapFirst = $mapFirst; Monorepo = $null; Branch = $branch }
     }
 }
 
 # --- Clone from monorepo fallback ---
-# When the individual repo clone fails and the org is in MONOREPO_MAP,
-# clone the full monorepo to a temp directory and extract just the
-# subdirectory for the requested plugin.
+# When the individual repo clone fails and the org is in MONOREPO_MAP, clone
+# the full monorepo to a temp directory and extract just the subdirectory
+# for the requested plugin. Also used directly (no probe) for MapFirst
+# specs: 2-segment specs whose owner is a known MONOREPO_MAP alias, and
+# 3-segment owner/repo/subdir specs, which pass an explicit -Monorepo
+# instead of relying on the MONOREPO_MAP lookup (see #16).
 function Install-FromMonorepo {
-    param([string]$Org, [string]$Name, [string]$TargetPath)
-    $monorepo = $script:MONOREPO_MAP[$Org]
-    if (-not $monorepo) { return $false }
+    param([string]$Org, [string]$Name, [string]$TargetPath, [string]$Monorepo, [string]$Branch)
+    if (-not $Monorepo) { $Monorepo = $script:MONOREPO_MAP[$Org] }
+    if (-not $Monorepo) { return $false }
 
-    $cloneUrl = "https://github.com/$monorepo.git"
+    $cloneUrl = "https://github.com/$Monorepo.git"
     $tmpDir = Join-Path $env:TEMP "ppm-monorepo-$Org-$(Get-Random)"
 
-    Write-Host "  Trying monorepo ($monorepo) ..." -ForegroundColor DarkCyan
+    Write-Host "  Trying monorepo ($Monorepo) ..." -ForegroundColor DarkCyan
+    $cloneArgs = @('clone', '--depth', '1')
+    if ($Branch) { $cloneArgs += @('--branch', $Branch) }
+    $cloneArgs += @($cloneUrl, $tmpDir)
     try {
-        Invoke-GitNoPrompt clone --depth 1 $cloneUrl $tmpDir | Out-Null
+        Invoke-GitNoPrompt @cloneArgs | Out-Null
     } catch {
         if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue }
         return $false
@@ -196,7 +233,7 @@ function Install-FromMonorepo {
 
     $subDir = Join-Path $tmpDir $Name
     if (-not (Test-Path $subDir)) {
-        Write-Host "  '$Name' not found in monorepo $monorepo" -ForegroundColor Yellow
+        Write-Host "  '$Name' not found in monorepo $Monorepo" -ForegroundColor Yellow
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
         return $false
     }
@@ -210,10 +247,11 @@ function Install-FromMonorepo {
 
     # Create a .monorepo marker so Update-Plugin knows how to update this
     @{
-        monorepo = $monorepo
+        monorepo = $Monorepo
         org      = $Org
         name     = $Name
         url      = $cloneUrl
+        branch   = $Branch
     } | ConvertTo-Json | Set-Content (Join-Path $TargetPath '.monorepo.json') -Encoding UTF8
 
     # Clean up temp dir
@@ -331,15 +369,18 @@ function Install-Plugin {
 
     $cloned = $false
     if ($info.MapFirst) {
-        # Known monorepo owner: the individual-repo URL is guaranteed to be a
-        # 404 (or a prompt-triggering 401 before that), so skip the doomed
-        # probe entirely and go straight to the monorepo.
-        $cloned = Install-FromMonorepo -Org $info.Org -Name $info.Name -TargetPath $info.Path
+        # Known monorepo owner (2-segment) or an explicit 3-segment
+        # owner/repo/subdir spec: skip the doomed/unnecessary individual-repo
+        # probe entirely and clone the monorepo directly.
+        $cloned = Install-FromMonorepo -Org $info.Org -Name $info.Name -TargetPath $info.Path -Monorepo $info.Monorepo -Branch $info.Branch
     } else {
         # Try direct git clone first. Never risks an interactive credential
         # prompt: a missing repo fails fast instead.
+        $cloneArgs = @('clone', '--depth', '1')
+        if ($info.Branch) { $cloneArgs += @('--branch', $info.Branch) }
+        $cloneArgs += @($info.Url, $info.Path)
         try {
-            Invoke-GitNoPrompt clone --depth 1 $info.Url $info.Path | Out-Null
+            Invoke-GitNoPrompt @cloneArgs | Out-Null
             if (Test-Path $info.Path) { $cloned = $true }
         } catch {}
 
@@ -347,7 +388,7 @@ function Install-Plugin {
         if (-not $cloned -and $info.Org -and $script:MONOREPO_MAP.ContainsKey($info.Org)) {
             # Remove any partial clone artifacts
             if (Test-Path $info.Path) { Remove-Item -Recurse -Force $info.Path -ErrorAction SilentlyContinue }
-            $cloned = Install-FromMonorepo -Org $info.Org -Name $info.Name -TargetPath $info.Path
+            $cloned = Install-FromMonorepo -Org $info.Org -Name $info.Name -TargetPath $info.Path -Branch $info.Branch
         }
     }
 
@@ -386,7 +427,10 @@ function Update-Plugin {
         Write-Host "  Updating: $name (from monorepo $($meta.monorepo)) ..." -ForegroundColor Cyan
         $tmpDir = Join-Path $env:TEMP "ppm-monorepo-$($meta.org)-$(Get-Random)"
         try {
-            Invoke-GitNoPrompt clone --depth 1 $meta.url $tmpDir | Out-Null
+            $cloneArgs = @('clone', '--depth', '1')
+            if ($meta.branch) { $cloneArgs += @('--branch', $meta.branch) }
+            $cloneArgs += @($meta.url, $tmpDir)
+            Invoke-GitNoPrompt @cloneArgs | Out-Null
             $subDir = Join-Path $tmpDir $meta.name
             if (Test-Path $subDir) {
                 # Remove old contents (except .monorepo.json) and copy new
