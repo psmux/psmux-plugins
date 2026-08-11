@@ -300,8 +300,13 @@ function Persist-PluginActivation {
         return  # no known entry point
     }
 
-    # Skip if this activation line (or one referencing the same plugin name) already exists
-    if ($content -match [regex]::Escape($name)) { return }
+    # Skip if this exact activation line has already been persisted. We check
+    # for the literal $activationLine rather than just $name, because $name
+    # also appears in the plugin's own `set -g @plugin '...'` declaration -
+    # the line that triggers this very install - so matching on $name alone
+    # always matched that pre-existing declaration and silently skipped
+    # writing the real activation line on every fresh install.
+    if ($content.Contains($activationLine)) { return }
 
     # Append inside managed section, or create one
     $lines = @(Get-Content $configFile -ErrorAction SilentlyContinue)
