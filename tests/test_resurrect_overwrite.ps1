@@ -43,7 +43,9 @@ $logFile         = Join-Path $stateDir 'calls.log'
 $sessionAliveFlag = Join-Path $stateDir 'session_alive'
 $overwriteOptFile = Join-Path $stateDir 'overwrite_opt'
 
-# Saved environment: one session, two windows, one pane each. Minimal on purpose --
+# Saved environment: one session with a main window and two windows sharing the
+# nested name. Duplicate names are intentional: reconciliation must match live
+# windows by occurrence, not treat each name as globally unique.
 # this test is about the exists/overwrite decision, not restore mechanics
 # (those are covered by the E2E and %id-targeting tests elsewhere).
 $saveJson = @'
@@ -55,6 +57,8 @@ $saveJson = @'
       { "index": 0, "name": "main", "active": true, "layout": "abcd,80x24,0,0,1", "zoomed": false, "flags": "",
         "panes": [ { "index": 0, "directory": "C:/", "active": true, "title": "", "command": "pwsh" } ] },
       { "index": 1, "name": "nested", "active": false, "layout": "efgh,80x24,0,0,2", "zoomed": false, "flags": "",
+        "panes": [ { "index": 0, "directory": "C:/", "active": true, "title": "", "command": "pwsh" } ] },
+      { "index": 2, "name": "nested", "active": false, "layout": "ijkl,80x24,0,0,3", "zoomed": false, "flags": "",
         "panes": [ { "index": 0, "directory": "C:/", "active": true, "title": "", "command": "pwsh" } ] }
     ] }
   ]
@@ -80,7 +84,7 @@ switch (`$a[0]) {
     'kill-session' { Remove-Item `$aliveFlag -Force -ErrorAction SilentlyContinue; exit 0 }
     'new-session' { New-Item -ItemType File -Path `$aliveFlag -Force | Out-Null; '%1'; exit 0 }
     'new-window' { '%2'; exit 0 }
-    'list-windows' { '0|main'; exit 0 }
+    'list-windows' { '0|main'; '1|nested'; exit 0 }
     'split-window' { '%3'; exit 0 }
     'show-options' {
         if (`$a -contains '@resurrect-overwrite') {
@@ -119,7 +123,9 @@ try {
     $calls = Get-Calls
     Check "default (no option set): no kill-session call" (-not ($calls | Where-Object { $_ -like 'kill-session*' }))
     Check "default (no option set): no new-session call (session reused)" (-not ($calls | Where-Object { $_ -like 'new-session*' }))
-    Check "default (no option set): missing nested window restored" ($calls | Where-Object { $_ -like 'new-window*-n nested*' }) "calls=$($calls -join ' | ')"
+    Check "default (no option set): matching main window preserved" (-not ($calls | Where-Object { $_ -like 'new-window*-n main*' })) "calls=$($calls -join ' | ')"
+    $nestedCreates = @($calls | Where-Object { $_ -like 'new-window*-n nested*' })
+    Check "default (no option set): exactly one missing duplicate nested window restored" ($nestedCreates.Count -eq 1) "calls=$($calls -join ' | ')"
     Check "default (no option set): session still marked alive" (Test-Path $sessionAliveFlag)
 
     # --- 2. overwrite 'on', session exists -> kill-session BEFORE new-session ---

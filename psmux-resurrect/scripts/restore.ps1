@@ -219,17 +219,28 @@ try {
                 foreach ($line in @($windowLines)) {
                     $parts = "$line".Trim() -split '\|', 2
                     if ($parts.Count -eq 2 -and $parts[1]) {
-                        $existingWindowTargets[$parts[1]] = "${sessionName}:$($parts[0])"
+                        if (-not $existingWindowTargets.ContainsKey($parts[1])) {
+                            $existingWindowTargets[$parts[1]] = @()
+                        }
+                        $existingWindowTargets[$parts[1]] += "${sessionName}:$($parts[0])"
                     }
                 }
 
                 $windowPaneIds = @()
                 $windowActivePaneIds = @()
+                $matchedWindowCounts = @{}
                 $addedWindows = 0
                 foreach ($win in @($session.windows)) {
-                    if ($win.name -and $existingWindowTargets.ContainsKey($win.name)) {
-                        $windowPaneIds += $null
+                    $matchedCount = if ($win.name -and $matchedWindowCounts.ContainsKey($win.name)) {
+                        $matchedWindowCounts[$win.name]
+                    } else {
+                        0
+                    }
+                    if ($win.name -and $existingWindowTargets.ContainsKey($win.name) -and
+                        $matchedCount -lt $existingWindowTargets[$win.name].Count) {
+                        $windowPaneIds += $existingWindowTargets[$win.name][$matchedCount]
                         $windowActivePaneIds += $null
+                        $matchedWindowCounts[$win.name] = $matchedCount + 1
                         continue
                     }
 
@@ -247,7 +258,6 @@ try {
                     $windowActivePaneIds += (Restore-WindowPanes -win $win -initialPaneId $winPaneId)
                     if ($winPaneId) {
                         $addedWindows++
-                        if ($win.name) { $existingWindowTargets[$win.name] = $winPaneId }
                     }
                 }
 
@@ -255,9 +265,6 @@ try {
                 for ($i = 0; $i -lt $savedWindows.Count; $i++) {
                     if ($savedWindows[$i].active -eq $true) {
                         $activeWindowTarget = $windowPaneIds[$i]
-                        if (-not $activeWindowTarget -and $savedWindows[$i].name) {
-                            $activeWindowTarget = $existingWindowTargets[$savedWindows[$i].name]
-                        }
                         if ($activeWindowTarget) {
                             & $PSMUX select-window -t $activeWindowTarget 2>&1 | Out-Null
                             if ($windowActivePaneIds[$i]) {
