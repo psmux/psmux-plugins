@@ -133,9 +133,9 @@ try {
         return $false
     }
 
-    # Check @resurrect-overwrite option: default off, preserves the existing
-    # skip-if-running behavior. When 'on', a session with the same saved name
-    # is killed and recreated from the save instead of being left alone.
+    # Check @resurrect-overwrite option. By default, existing sessions are
+    # preserved and reconciled by restoring only their missing saved windows.
+    # When 'on', the whole session is killed and recreated from the save.
     $overwriteExisting = $false
     try {
         $overwriteOpt = (& $PSMUX show-options -gv '@resurrect-overwrite' 2>&1 | Out-String).Trim()
@@ -146,7 +146,7 @@ try {
     $startTime = Get-Date
     $restoredCount = 0
     $overwrittenCount = 0
-    $skipped = @()
+    $reusedCount = 0
     $failed = @()
     $totalWindows = 0
 
@@ -160,6 +160,48 @@ try {
         return $null
     }
 
+    function Restore-WindowPanes {
+        param($win, [string]$initialPaneId)
+
+        if (-not $initialPaneId) { return }
+
+        $paneIds = @($initialPaneId)
+        if ($win.panes.Count -gt 1) {
+            for ($p = 1; $p -lt $win.panes.Count; $p++) {
+                $pDir = if ($win.panes[$p].directory) { $win.panes[$p].directory } else { $env:USERPROFILE }
+                $paneIds += Get-PaneId (& $PSMUX split-window -t $initialPaneId -c $pDir -P -F '#{pane_id}' 2>&1)
+            }
+        }
+
+        if ($win.layout) {
+            & $PSMUX select-layout -t $initialPaneId $win.layout 2>&1 | Out-Null
+        }
+
+        $activePaneId = $null
+        for ($ti = 0; $ti -lt $win.panes.Count; $ti++) {
+            $paneId = $paneIds[$ti]
+            if (-not $paneId) { continue }
+            $pane = $win.panes[$ti]
+            if ($pane.title) {
+                & $PSMUX select-pane -t $paneId -T $pane.title 2>&1 | Out-Null
+            }
+            if ($pane.active -eq $true) { $activePaneId = $paneId }
+            if ($restoreProcesses -and $pane.command -and (Should-RestoreProcess $pane.command)) {
+                & $PSMUX send-keys -t $paneId $pane.command Enter 2>&1 | Out-Null
+                Start-Sleep -Milliseconds 200
+            }
+        }
+        if ($activePaneId) {
+            & $PSMUX select-pane -t $activePaneId 2>&1 | Out-Null
+        }
+
+        if ($win.zoomed -eq $true -and $win.panes.Count -gt 1 -and $activePaneId) {
+            & $PSMUX resize-pane -Z -t $activePaneId 2>&1 | Out-Null
+        }
+
+        return $activePaneId
+    }
+
     for ($si = 0; $si -lt $totalSessions; $si++) {
         $session = $env_data.sessions[$si]
         $sessionName = $session.name
@@ -170,8 +212,73 @@ try {
         $null = & $PSMUX has-session -t $sessionName 2>&1
         if ($LASTEXITCODE -eq 0) {
             if (-not $overwriteExisting) {
-                Write-Host "  Session '$sessionName' already exists, skipping" -ForegroundColor Yellow
-                $skipped += $sessionName
+                Write-Host "  Session '$sessionName' already exists, restoring missing windows" -ForegroundColor Yellow
+
+                $existingWindowTargets = @{}
+                $windowLines = & $PSMUX list-windows -t $sessionName -F '#{window_index}|#{window_name}' 2>&1
+                foreach ($line in @($windowLines)) {
+                    $parts = "$line".Trim() -split '\|', 2
+                    if ($parts.Count -eq 2 -and $parts[1]) {
+                        if (-not $existingWindowTargets.ContainsKey($parts[1])) {
+                            $existingWindowTargets[$parts[1]] = @()
+                        }
+                        $existingWindowTargets[$parts[1]] += "${sessionName}:$($parts[0])"
+                    }
+                }
+
+                $windowPaneIds = @()
+                $windowActivePaneIds = @()
+                $matchedWindowCounts = @{}
+                $addedWindows = 0
+                foreach ($win in @($session.windows)) {
+                    $matchedCount = if ($win.name -and $matchedWindowCounts.ContainsKey($win.name)) {
+                        $matchedWindowCounts[$win.name]
+                    } else {
+                        0
+                    }
+                    if ($win.name -and $existingWindowTargets.ContainsKey($win.name) -and
+                        $matchedCount -lt $existingWindowTargets[$win.name].Count) {
+                        $windowPaneIds += $existingWindowTargets[$win.name][$matchedCount]
+                        $windowActivePaneIds += $null
+                        $matchedWindowCounts[$win.name] = $matchedCount + 1
+                        continue
+                    }
+
+                    $winDir = if ($win.panes -and $win.panes[0].directory) {
+                        $win.panes[0].directory
+                    } else {
+                        $env:USERPROFILE
+                    }
+                    $newWinArgs = @('-t', $sessionName, '-c', $winDir)
+                    if ($win.name) {
+                        $newWinArgs = @('-t', $sessionName, '-n', $win.name, '-c', $winDir)
+                    }
+                    $winPaneId = Get-PaneId (& $PSMUX new-window @newWinArgs -P -F '#{pane_id}' 2>&1)
+                    $windowPaneIds += $winPaneId
+                    $windowActivePaneIds += (Restore-WindowPanes -win $win -initialPaneId $winPaneId)
+                    if ($winPaneId) {
+                        $addedWindows++
+                    }
+                }
+
+                $savedWindows = @($session.windows)
+                for ($i = 0; $i -lt $savedWindows.Count; $i++) {
+                    if ($savedWindows[$i].active -eq $true) {
+                        $activeWindowTarget = $windowPaneIds[$i]
+                        if ($activeWindowTarget) {
+                            & $PSMUX select-window -t $activeWindowTarget 2>&1 | Out-Null
+                            if ($windowActivePaneIds[$i]) {
+                                & $PSMUX select-pane -t $windowActivePaneIds[$i] 2>&1 | Out-Null
+                            }
+                        }
+                        break
+                    }
+                }
+
+                $restoredCount++
+                $reusedCount++
+                $totalWindows += $addedWindows
+                Write-Host "  Reconciled session: $sessionName ($addedWindows missing windows restored)" -ForegroundColor Green
                 continue
             }
 
@@ -218,64 +325,6 @@ try {
             Write-Host "  Failed to create session '$sessionName'" -ForegroundColor Red
             $failed += $sessionName
             continue
-        }
-
-        # Restore a window's panes.
-        function Restore-WindowPanes {
-            param($win, [string]$initialPaneId)
-
-            # Without the initial pane's id we can't target this window, so skip it.
-            if (-not $initialPaneId) { return }
-
-            # Ordered pane ids for this window: initial pane, then one per split,
-            # in creation order (1:1 with $win.panes). Split entries may be $null.
-            $paneIds = @($initialPaneId)
-            if ($win.panes.Count -gt 1) {
-                for ($p = 1; $p -lt $win.panes.Count; $p++) {
-                    $pDir = if ($win.panes[$p].directory) { $win.panes[$p].directory } else { $env:USERPROFILE }
-                    $paneIds += Get-PaneId (& $PSMUX split-window -t $initialPaneId -c $pDir -P -F '#{pane_id}' 2>&1)
-                }
-            }
-
-            # Replay the saved layout so split orientations and sizes match the original
-            if ($win.layout) {
-                & $PSMUX select-layout -t $initialPaneId $win.layout 2>&1 | Out-Null
-            }
-
-            # Select the active pane last: select-pane -T and send-keys, used
-            # below, both move the active pane.
-            $activePaneId = $null
-            for ($ti = 0; $ti -lt $win.panes.Count; $ti++) {
-                $paneId = $paneIds[$ti]
-                if (-not $paneId) { continue }
-                $pane = $win.panes[$ti]
-                if ($pane.title) {
-                    & $PSMUX select-pane -t $paneId -T $pane.title 2>&1 | Out-Null
-                }
-                if ($pane.active -eq $true) { $activePaneId = $paneId }
-                if ($restoreProcesses -and $pane.command -and (Should-RestoreProcess $pane.command)) {
-                    & $PSMUX send-keys -t $paneId $pane.command Enter 2>&1 | Out-Null
-                    Start-Sleep -Milliseconds 200
-                }
-            }
-            if ($activePaneId) {
-                & $PSMUX select-pane -t $activePaneId 2>&1 | Out-Null
-            }
-
-            # Re-zoom the active pane (the pane that was zoomed).
-            if ($win.zoomed -eq $true -and $win.panes.Count -gt 1 -and $activePaneId) {
-                & $PSMUX resize-pane -Z -t $activePaneId 2>&1 | Out-Null
-            }
-
-            # Report this window's real active pane id back to the caller: the
-            # end-of-session "select active window" step below targets a window by
-            # one of its pane ids, and psmux's target resolution for select-window
-            # also re-activates that specific pane as a side effect (confirmed
-            # against the real binary: `select-window -t <pane-id>` makes that exact
-            # pane active). Without this, selecting the active window can silently
-            # clobber the active-pane choice made above whenever the active pane
-            # isn't the window's first pane.
-            return $activePaneId
         }
 
         # Restore first window
@@ -330,8 +379,8 @@ try {
     if ($overwrittenCount -gt 0) {
         $summary += " ($overwrittenCount overwritten)"
     }
-    if ($skipped.Count -gt 0) {
-        $summary = "psmux-resurrect: restored $restoredCount/$totalSessions, skipped $($skipped.Count) (already running)"
+    if ($reusedCount -gt 0) {
+        $summary += " ($reusedCount existing sessions reused)"
     }
     if ($failed.Count -gt 0) {
         $summary += " - failed: $($failed -join ', ')"
