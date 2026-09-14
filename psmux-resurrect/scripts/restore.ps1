@@ -139,9 +139,10 @@ try {
         return $false
     }
 
-    # Check @resurrect-overwrite option: default off, preserves the existing
-    # skip-if-running behavior. When 'on', a session with the same saved name
-    # is killed and recreated from the save instead of being left alone.
+    # Check @resurrect-overwrite option. Default off: a running session is
+    # kept and only the saved windows it is missing (by window index, the way
+    # tmux-resurrect's window_exists works) are added to it. When 'on', a
+    # session with the same saved name is killed and recreated from the save.
     $overwriteExisting = $false
     try {
         $overwriteOpt = (& $PSMUX show-options -gv '@resurrect-overwrite' 2>&1 | Out-String).Trim()
@@ -157,7 +158,9 @@ try {
     Write-Host "psmux-resurrect: restoring $totalSessions sessions from $(Split-Path $saveFile -Leaf)" -ForegroundColor DarkGray
     $restoredCount = 0
     $overwrittenCount = 0
-    $skipped = @()
+    $skipped = @()          # running and already complete: left alone
+    $reused = @()           # running, missing windows were added (name (N windows))
+    $reusedWindows = 0
     $failed = @()
     $totalWindows = 0
 
@@ -171,6 +174,81 @@ try {
         return $null
     }
 
+    # Restore a window's panes.
+    function Restore-WindowPanes {
+        param($win, [string]$initialPaneId, [string]$WindowTarget = '')
+
+        # Without the initial pane's id we can't target this window, so skip it.
+        if (-not $initialPaneId) { return }
+
+        # split-window and select-layout are routed by recency when given a bare
+        # %id, so with a second session alive they can land on the wrong server
+        # (psmux 3.3.8; fixed in core after this). A caller that knows the
+        # window's session:index passes it and those two commands use it; the
+        # per-pane commands below resolve %id owners correctly and keep it.
+        $splitTarget = if ($WindowTarget) { $WindowTarget } else { $initialPaneId }
+
+        # Ordered pane ids for this window: initial pane, then one per split,
+        # in creation order (1:1 with $win.panes). Split entries may be $null.
+        $paneIds = @($initialPaneId)
+        if ($win.panes.Count -gt 1) {
+            for ($p = 1; $p -lt $win.panes.Count; $p++) {
+                $pDir = if ($win.panes[$p].directory) { $win.panes[$p].directory } else { $env:USERPROFILE }
+                $paneIds += Get-PaneId (& $PSMUX split-window -t $splitTarget -c $pDir -P -F '#{pane_id}' 2>&1)
+            }
+        }
+
+        # Replay the saved layout so split orientations and sizes match the original
+        if ($win.layout) {
+            & $PSMUX select-layout -t $splitTarget $win.layout 2>&1 | Out-Null
+        }
+
+        # Select the active pane last: select-pane -T and send-keys, used
+        # below, both move the active pane.
+        $activePaneId = $null
+        for ($ti = 0; $ti -lt $win.panes.Count; $ti++) {
+            $paneId = $paneIds[$ti]
+            if (-not $paneId) { continue }
+            $pane = $win.panes[$ti]
+            if ($pane.title) {
+                & $PSMUX select-pane -t $paneId -T $pane.title 2>&1 | Out-Null
+            }
+            if ($pane.active -eq $true) { $activePaneId = $paneId }
+            if ($restoreProcesses -and $pane.command -and (Should-RestoreProcess $pane.command)) {
+                # A per-program strategy (@resurrect-strategy-<prog>) may swap the
+                # saved command for a better one; on any failure it hands back the
+                # original, so this can never block the restore.
+                $paneDir = if ($pane.directory) { $pane.directory } else { $env:USERPROFILE }
+                $sendCmd = Get-StrategyCommand `
+                    -OriginalCommand $pane.command `
+                    -Directory $paneDir `
+                    -PsmuxBin $PSMUX `
+                    -PluginDir $PLUGIN_DIR
+                & $PSMUX send-keys -t $paneId $sendCmd Enter 2>&1 | Out-Null
+                Start-Sleep -Milliseconds 200
+            }
+        }
+        if ($activePaneId) {
+            & $PSMUX select-pane -t $activePaneId 2>&1 | Out-Null
+        }
+
+        # Re-zoom the active pane (the pane that was zoomed).
+        if ($win.zoomed -eq $true -and $win.panes.Count -gt 1 -and $activePaneId) {
+            & $PSMUX resize-pane -Z -t $activePaneId 2>&1 | Out-Null
+        }
+
+        # Report this window's real active pane id back to the caller: the
+        # end-of-session "select active window" step below targets a window by
+        # one of its pane ids, and psmux's target resolution for select-window
+        # also re-activates that specific pane as a side effect (confirmed
+        # against the real binary: `select-window -t <pane-id>` makes that exact
+        # pane active). Without this, selecting the active window can silently
+        # clobber the active-pane choice made above whenever the active pane
+        # isn't the window's first pane.
+        return $activePaneId
+    }
+
+
     for ($si = 0; $si -lt $totalSessions; $si++) {
         $session = $env_data.sessions[$si]
         $sessionName = $session.name
@@ -181,7 +259,50 @@ try {
         $null = & $PSMUX has-session -t $sessionName 2>&1
         if ($LASTEXITCODE -eq 0) {
             if (-not $overwriteExisting) {
-                $skipped += $sessionName
+                # Keep the running session and add only the saved windows it no
+                # longer has. Windows are matched by their saved index, which is
+                # stable across the save and the live server; names are not (an
+                # unnamed window is called after whatever runs in it, and several
+                # windows commonly share 'pwsh'). Windows already present are not
+                # touched, and the session's active window is left where it is.
+                $liveIndexes = @{}
+                $activeBefore = $null
+                foreach ($line in @(& $PSMUX list-windows -t $sessionName -F '#{window_index}|#{window_active}' 2>&1)) {
+                    if ("$line" -match '^\s*(\d+)\|(\d)') {
+                        $liveIndexes[[int]$Matches[1]] = $true
+                        if ($Matches[2] -eq '1') { $activeBefore = [int]$Matches[1] }
+                    }
+                }
+                $added = 0
+                foreach ($win in @($session.windows)) {
+                    if ($liveIndexes.ContainsKey([int]$win.index)) { continue }
+                    $winDir = if ($win.panes -and $win.panes[0].directory) { $win.panes[0].directory } else { $env:USERPROFILE }
+                    # psmux's new-window cannot create at a free index directly
+                    # (tmux can), so create detached at the next free slot and
+                    # move the window to its saved index afterwards.
+                    $newWinArgs = @('-d', '-t', $sessionName, '-c', $winDir)
+                    if ($win.name) { $newWinArgs += @('-n', $win.name) }
+                    $winPaneId = Get-PaneId (& $PSMUX new-window @newWinArgs -P -F '#{pane_id}' 2>&1)
+                    if (-not $winPaneId) { continue }
+                    $gotIndex = (& $PSMUX display-message -p -t $winPaneId '#{window_index}' 2>&1 | Out-String).Trim()
+                    if ($gotIndex -match '^\d+$' -and [int]$gotIndex -ne [int]$win.index) {
+                        & $PSMUX move-window -s "${sessionName}:$gotIndex" -t "${sessionName}:$($win.index)" 2>&1 | Out-Null
+                    }
+                    $null = Restore-WindowPanes -win $win -initialPaneId $winPaneId -WindowTarget "${sessionName}:$($win.index)"
+                    $added++
+                }
+                if ($added -gt 0 -and $null -ne $activeBefore) {
+                    # new-window -d and move-window can still shift focus; put the
+                    # running session back on the window its user had selected.
+                    & $PSMUX select-window -t "${sessionName}:$activeBefore" 2>&1 | Out-Null
+                }
+                if ($added -gt 0) {
+                    $reused += "$sessionName ($added windows)"
+                    $reusedWindows += $added
+                    Write-Host "  Kept running session: $sessionName ($added missing windows added)" -ForegroundColor Green
+                } else {
+                    $skipped += $sessionName
+                }
                 continue
             }
 
@@ -230,73 +351,6 @@ try {
             continue
         }
 
-        # Restore a window's panes.
-        function Restore-WindowPanes {
-            param($win, [string]$initialPaneId)
-
-            # Without the initial pane's id we can't target this window, so skip it.
-            if (-not $initialPaneId) { return }
-
-            # Ordered pane ids for this window: initial pane, then one per split,
-            # in creation order (1:1 with $win.panes). Split entries may be $null.
-            $paneIds = @($initialPaneId)
-            if ($win.panes.Count -gt 1) {
-                for ($p = 1; $p -lt $win.panes.Count; $p++) {
-                    $pDir = if ($win.panes[$p].directory) { $win.panes[$p].directory } else { $env:USERPROFILE }
-                    $paneIds += Get-PaneId (& $PSMUX split-window -t $initialPaneId -c $pDir -P -F '#{pane_id}' 2>&1)
-                }
-            }
-
-            # Replay the saved layout so split orientations and sizes match the original
-            if ($win.layout) {
-                & $PSMUX select-layout -t $initialPaneId $win.layout 2>&1 | Out-Null
-            }
-
-            # Select the active pane last: select-pane -T and send-keys, used
-            # below, both move the active pane.
-            $activePaneId = $null
-            for ($ti = 0; $ti -lt $win.panes.Count; $ti++) {
-                $paneId = $paneIds[$ti]
-                if (-not $paneId) { continue }
-                $pane = $win.panes[$ti]
-                if ($pane.title) {
-                    & $PSMUX select-pane -t $paneId -T $pane.title 2>&1 | Out-Null
-                }
-                if ($pane.active -eq $true) { $activePaneId = $paneId }
-                if ($restoreProcesses -and $pane.command -and (Should-RestoreProcess $pane.command)) {
-                    # A per-program strategy (@resurrect-strategy-<prog>) may swap the
-                    # saved command for a better one; on any failure it hands back the
-                    # original, so this can never block the restore.
-                    $paneDir = if ($pane.directory) { $pane.directory } else { $env:USERPROFILE }
-                    $sendCmd = Get-StrategyCommand `
-                        -OriginalCommand $pane.command `
-                        -Directory $paneDir `
-                        -PsmuxBin $PSMUX `
-                        -PluginDir $PLUGIN_DIR
-                    & $PSMUX send-keys -t $paneId $sendCmd Enter 2>&1 | Out-Null
-                    Start-Sleep -Milliseconds 200
-                }
-            }
-            if ($activePaneId) {
-                & $PSMUX select-pane -t $activePaneId 2>&1 | Out-Null
-            }
-
-            # Re-zoom the active pane (the pane that was zoomed).
-            if ($win.zoomed -eq $true -and $win.panes.Count -gt 1 -and $activePaneId) {
-                & $PSMUX resize-pane -Z -t $activePaneId 2>&1 | Out-Null
-            }
-
-            # Report this window's real active pane id back to the caller: the
-            # end-of-session "select active window" step below targets a window by
-            # one of its pane ids, and psmux's target resolution for select-window
-            # also re-activates that specific pane as a side effect (confirmed
-            # against the real binary: `select-window -t <pane-id>` makes that exact
-            # pane active). Without this, selecting the active window can silently
-            # clobber the active-pane choice made above whenever the active pane
-            # isn't the window's first pane.
-            return $activePaneId
-        }
-
         # Restore first window
         $windowPaneIds = @($firstPaneId)
         $windowActivePaneIds = @(Restore-WindowPanes -win $firstWindow -initialPaneId $firstPaneId)
@@ -343,12 +397,12 @@ try {
     }
 
     if ($skipped.Count -gt 0) {
-        # A saved session that is still running is left alone. Collapse the
-        # whole list into one line: a save made from a server that outlived
-        # its terminal window can hold dozens of them (issue #35).
+        # A saved session that is still running with every saved window present
+        # is left alone. Collapse the whole list into one line: a save made from
+        # a server that outlived its terminal window can hold dozens (issue #35).
         $shown = @($skipped | Select-Object -First 8)
         $more = if ($skipped.Count -gt $shown.Count) { " and $($skipped.Count - $shown.Count) more" } else { '' }
-        Write-Host "  Still running, left alone: $($shown -join ', ')$more" -ForegroundColor Yellow
+        Write-Host "  Still running and complete, left alone: $($shown -join ', ')$more" -ForegroundColor Yellow
         Write-Host "  (attach with 'psmux attach -t <name>', or set @resurrect-overwrite 'on' to recreate them from the save)" -ForegroundColor DarkGray
     }
 
@@ -359,9 +413,14 @@ try {
     if ($overwrittenCount -gt 0) {
         $summary += " ($overwrittenCount overwritten)"
     }
+    if ($reused.Count -gt 0) {
+        $summary += " ($reusedWindows windows added to $($reused.Count) running sessions)"
+    }
     if ($skipped.Count -gt 0) {
         $summary = "psmux-resurrect: restored $restoredCount/$totalSessions, skipped $($skipped.Count) (already running)"
-        if ($restoredCount -eq 0) {
+        if ($reused.Count -gt 0) {
+            $summary = "psmux-resurrect: restored $restoredCount/$totalSessions, added $reusedWindows windows to $($reused.Count) running, left $($skipped.Count) alone"
+        } elseif ($restoredCount -eq 0) {
             # Nothing came back because nothing had gone away: the sessions in
             # the save are all still alive on the server (psmux ls shows them).
             $summary = "psmux-resurrect: nothing to restore, all $($skipped.Count) saved sessions are still running (psmux ls to see them, @resurrect-overwrite 'on' to recreate)"
@@ -373,7 +432,7 @@ try {
 
     # The summary goes to stdout too, so the run-shell popup and a terminal
     # run both end with the same line the toast shows.
-    Write-Host $summary -ForegroundColor $(if ($restoredCount -gt 0) { 'Green' } else { 'Yellow' })
+    Write-Host $summary -ForegroundColor $(if ($restoredCount -gt 0 -or $reused.Count -gt 0) { 'Green' } else { 'Yellow' })
     Set-ResurrectStatus $summary
     & $PSMUX display-message -d $SUMMARY_TOAST_MS $summary 2>&1 | Out-Null
     & $PSMUX refresh-client -S 2>&1 | Out-Null

@@ -31,7 +31,7 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 
 ## What Gets Restored
 
-- All sessions (idempotent by default: existing sessions are skipped, see `@resurrect-overwrite` below to change this)
+- All sessions (idempotent by default: a session that is still running is kept, and only the saved windows it is missing are added to it; see `@resurrect-overwrite` below)
 - Windows with correct names
 - Panes in correct working directories
 - Exact layout geometry via `select-layout` replay
@@ -67,10 +67,11 @@ set -g @resurrect-processes ':all:'
 # Use tilde for fuzzy matching (restore if command contains the string)
 set -g @resurrect-processes '"~rails server" "~npm start"'
 
-# Overwrite sessions that are already running instead of skipping them.
-# Default is off, matching the current skip-if-running behavior. When 'on',
-# a running session with a name that matches the save is killed and
-# recreated from the save instead of being left alone.
+# Overwrite sessions that are already running instead of keeping them.
+# Default is off: a running session is kept, its existing windows are not
+# touched, and saved windows it no longer has (matched by window index, as
+# tmux-resurrect does) are added to it. When 'on', the running session is
+# killed and fully recreated from the save.
 set -g @resurrect-overwrite 'on'
 
 # What to do with auto-named sessions (the 0, 1, 2 a bare `psmux` creates).
@@ -118,11 +119,13 @@ On completion the status briefly shows a summary, then clears:
 psmux-resurrect: restored 7 sessions, 23 windows in 3.1s
 ```
 
-Skipped sessions (already running) and failures are reported in the summary
-too:
+Sessions that were still running are reported too. One that already had
+every saved window is left alone; one that was missing windows gets them
+added:
 
 ```
-psmux-resurrect: restored 0/12, skipped 12 (already running)
+psmux-resurrect: nothing to restore, all 12 saved sessions are still running (psmux ls to see them, @resurrect-overwrite 'on' to recreate)
+psmux-resurrect: restored 2/12, added 3 windows to 1 running, left 9 alone
 ```
 
 With `@resurrect-overwrite 'on'`, sessions that were killed and recreated are
@@ -208,7 +211,8 @@ Duplicate saves are skipped when the environment has not changed.
 Closing the terminal window does not stop psmux: the client detaches and the
 server, with every session in it, keeps running (see psmux/psmux#585). So the
 sessions you saved are usually still there, and restore leaves a running
-session alone by default. Check with:
+session alone by default, adding only saved windows it no longer has. Check
+with:
 
 ```powershell
 psmux ls                 # what is actually running

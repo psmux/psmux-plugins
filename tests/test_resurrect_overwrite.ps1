@@ -10,8 +10,8 @@
 # never touches a real dev's ~/.psmux/resurrect.
 #
 # Covers:
-#   - @resurrect-overwrite unset (default off): existing session is left
-#     alone -- no kill-session, no new-session, counted as skipped.
+#   - @resurrect-overwrite unset (default off): existing session is kept, its
+#     live windows are untouched, and missing saved windows (by index) are added.
 #   - @resurrect-overwrite 'on', session exists: kill-session runs BEFORE
 #     new-session (order matters -- recreating before the kill lands would
 #     silently no-op), counted as overwritten.
@@ -43,7 +43,10 @@ $logFile         = Join-Path $stateDir 'calls.log'
 $sessionAliveFlag = Join-Path $stateDir 'session_alive'
 $overwriteOptFile = Join-Path $stateDir 'overwrite_opt'
 
-# Saved environment: one session, one window, one pane. Minimal on purpose --
+# Saved environment: one session with three windows; the shim's list-windows
+# reports indexes 0 and 1 as live, so reconciliation must add exactly the one
+# at index 2 (windows are matched by saved index, never by name: the two
+# 'nested' windows share a name on purpose and must not be paired by it).
 # this test is about the exists/overwrite decision, not restore mechanics
 # (those are covered by the E2E and %id-targeting tests elsewhere).
 $saveJson = @'
@@ -53,6 +56,10 @@ $saveJson = @'
   "sessions": [
     { "name": "ow_test_session", "windows": [
       { "index": 0, "name": "main", "active": true, "layout": "abcd,80x24,0,0,1", "zoomed": false, "flags": "",
+        "panes": [ { "index": 0, "directory": "C:/", "active": true, "title": "", "command": "pwsh" } ] },
+      { "index": 1, "name": "nested", "active": false, "layout": "efgh,80x24,0,0,2", "zoomed": false, "flags": "",
+        "panes": [ { "index": 0, "directory": "C:/", "active": true, "title": "", "command": "pwsh" } ] },
+      { "index": 2, "name": "nested", "active": false, "layout": "ijkl,80x24,0,0,3", "zoomed": false, "flags": "",
         "panes": [ { "index": 0, "directory": "C:/", "active": true, "title": "", "command": "pwsh" } ] }
     ] }
   ]
@@ -78,6 +85,11 @@ switch (`$a[0]) {
     'kill-session' { Remove-Item `$aliveFlag -Force -ErrorAction SilentlyContinue; exit 0 }
     'new-session' { New-Item -ItemType File -Path `$aliveFlag -Force | Out-Null; '%1'; exit 0 }
     'new-window' { '%2'; exit 0 }
+    'list-windows' {
+        # restore.ps1 asks for '#{window_index}|#{window_active}'; indexes 0 and 1 are live
+        if (`$a -contains '#{window_index}|#{window_active}') { '0|1'; '1|0' } else { '0|main'; '1|nested' }
+        exit 0
+    }
     'split-window' { '%3'; exit 0 }
     'show-options' {
         if (`$a -contains '@resurrect-overwrite') {
@@ -108,14 +120,17 @@ function Reset-Calls {
 function Get-Calls { if (Test-Path $logFile) { Get-Content $logFile } else { @() } }
 
 try {
-    # --- 1. overwrite unset (default off), session exists -> skip, no kill/new-session ---
+    # --- 1. overwrite unset: reuse session and restore its missing nested window ---
     Remove-Item $overwriteOptFile -Force -ErrorAction SilentlyContinue
     New-Item -ItemType File -Path $sessionAliveFlag -Force | Out-Null
     Reset-Calls
     Invoke-Restore
     $calls = Get-Calls
     Check "default (no option set): no kill-session call" (-not ($calls | Where-Object { $_ -like 'kill-session*' }))
-    Check "default (no option set): no new-session call (session left alone)" (-not ($calls | Where-Object { $_ -like 'new-session*' }))
+    Check "default (no option set): no new-session call (session reused)" (-not ($calls | Where-Object { $_ -like 'new-session*' }))
+    Check "default (no option set): matching main window preserved" (-not ($calls | Where-Object { $_ -like 'new-window*-n main*' })) "calls=$($calls -join ' | ')"
+    $nestedCreates = @($calls | Where-Object { $_ -like 'new-window*-n nested*' })
+    Check "default (no option set): exactly one missing duplicate nested window restored" ($nestedCreates.Count -eq 1) "calls=$($calls -join ' | ')"
     Check "default (no option set): session still marked alive" (Test-Path $sessionAliveFlag)
 
     # --- 2. overwrite 'on', session exists -> kill-session BEFORE new-session ---

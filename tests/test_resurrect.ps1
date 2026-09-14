@@ -279,7 +279,7 @@ Write-Host "`n--- Phase 7: Idempotency Test ---" -ForegroundColor Yellow
 $restoreAgain = pwsh -NoProfile -ExecutionPolicy Bypass -File $RESTORE_SCRIPT 2>&1 | Out-String
 # Skipped sessions are reported on one collapsed line (issue #35), not one
 # "already exists" line per session.
-Check "restore skips existing sessions" ($restoreAgain -match 'Still running, left alone: .*res_test_alpha' -and $restoreAgain -match 'nothing to restore, all 3 saved sessions are still running') "Got: $restoreAgain"
+Check "restore skips existing sessions" ($restoreAgain -match 'Still running and complete, left alone: .*res_test_alpha' -and $restoreAgain -match 'nothing to restore, all 3 saved sessions are still running') "Got: $restoreAgain"
 Check "restore does not print one line per skipped session" ($restoreAgain -notmatch 'already exists') "Got: $restoreAgain"
 
 # =============================================================================

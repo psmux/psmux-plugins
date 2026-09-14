@@ -144,7 +144,7 @@ try {
     $names = Get-SavedNames
     Check "fixture: 0, 1 and work saved with unnamed on" (($names -contains '0') -and ($names -contains '1') -and ($names -contains 'work')) "Saved: [$($names -join ', ')]"
     $out = Invoke-Restore
-    $skipLines = @(($out -split "`r?`n") | Where-Object { $_ -match 'Still running, left alone' })
+    $skipLines = @(($out -split "`r?`n") | Where-Object { $_ -match 'Still running and complete, left alone' })
     Check "restore: one collapsed line for every skipped session" ($skipLines.Count -eq 1) "Output: $out"
     Check "restore: no per-session already-exists lines" ($out -notmatch "already exists, skipping") "Output: $out"
     Check "restore: the collapsed line names the sessions" ($skipLines[0] -match '\b0\b' -and $skipLines[0] -match '\bwork\b') "Line: $($skipLines[0])"
