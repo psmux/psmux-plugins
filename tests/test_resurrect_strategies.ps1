@@ -4,6 +4,10 @@
 # Validates Get-StrategyCommand in scripts/strategy.ps1 against the
 # tmux-resurrect strategy contract: <program>_<strategy>.ps1 lookup, user-dir
 # precedence over plugin-dir fallback, fallback-to-original on failure.
+# Needs a running psmux server: the strategy name is read back through
+# show-options, so with no server every lookup falls back to the original
+# command and the invocation phases fail. Start one first, e.g.
+#   psmux new-session -d -s strategy_keepalive
 # =============================================================================
 $ErrorActionPreference = 'Continue'
 

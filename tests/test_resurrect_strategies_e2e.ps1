@@ -12,10 +12,11 @@
 # scripts routes to an isolated server, leaving the user's default server
 # untouched.
 #
-# We use 'shell' as the strategy key because that's what psmux's
-# pane_current_command returns for idle shells on Windows. (Confirmed
-# against real save data; same reason copilot panes report as 'node' rather
-# than 'copilot'.)
+# The strategy key is the basename of the pane's saved command. psmux
+# reports an idle shell by its real binary name since psmux/psmux#299 was
+# fixed (pwsh, powershell or cmd depending on default-shell; older builds
+# said the literal 'shell'), so the test registers the same strategy under
+# every one of those keys and lets whichever name the server reports match.
 # =============================================================================
 $ErrorActionPreference = 'Continue'
 
@@ -47,9 +48,12 @@ New-Item -ItemType Directory -Path $saveDir -Force | Out-Null
 $saveDirEsc = $saveDir.Replace("'", "''")
 $confFile = Join-Path $tempRoot 'test.psmux.conf'
 @"
+set -g @resurrect-strategy-pwsh 'e2etest'
+set -g @resurrect-strategy-powershell 'e2etest'
+set -g @resurrect-strategy-cmd 'e2etest'
 set -g @resurrect-strategy-shell 'e2etest'
 set -g @resurrect-dir '$saveDirEsc'
-set -g @resurrect-processes 'shell'
+set -g @resurrect-processes 'pwsh powershell cmd shell'
 "@ | Set-Content $confFile -Encoding ASCII
 
 # Env-stripping wrapper that also loads the test config. -f is honored at
@@ -79,13 +83,17 @@ foreach ($rel in @('scripts\save.ps1','scripts\restore.ps1')) {
 # Sentinel + test strategy
 $sentinel   = Join-Path $env:TEMP "psmux_strategy_invoked_$([guid]::NewGuid().ToString('N')).txt"
 $echoMarker = "RESTORED_MARKER_$([guid]::NewGuid().ToString('N').Substring(0,8))"
-$strategyFile = Join-Path $tempPlugin 'strategies\shell_e2etest.ps1'
-@"
+$shellKeys = @('pwsh', 'powershell', 'cmd', 'shell')
+$strategyBody = @"
 param([string]`$OriginalCommand, [string]`$Directory)
 "sentinel hit at `$(Get-Date -Format o); cmd=[`$OriginalCommand]; dir=[`$Directory]" |
     Add-Content -Path '$sentinel' -Encoding UTF8
 "echo $echoMarker"
-"@ | Set-Content -Path $strategyFile -Encoding UTF8
+"@
+foreach ($k in $shellKeys) {
+    $strategyBody | Set-Content -Path (Join-Path $tempPlugin "strategies\${k}_e2etest.ps1") -Encoding UTF8
+}
+$strategyFile = Join-Path $tempPlugin 'strategies\<shell>_e2etest.ps1'
 
 Write-Host "=== psmux-resurrect E2E Strategy Wiring ===" -ForegroundColor Magenta
 Write-Host "wrapper  : $wrapperPath"
@@ -129,8 +137,8 @@ $sessList = (w list-sessions -F '#{session_name}' 2>&1 | Out-String).Trim()
 Write-Host "  sessions after bootstrap -> [$sessList]"
 if (-not ($keepOk -and $targetOk)) { throw "bootstrap failed" }
 
-$strat = (w show-options -gv '@resurrect-strategy-shell' 2>&1 | Out-String).Trim()
-Write-Host "  @resurrect-strategy-shell (from conf) -> [$strat]"
+$strat = (w show-options -gv '@resurrect-strategy-pwsh' 2>&1 | Out-String).Trim()
+Write-Host "  @resurrect-strategy-pwsh (from conf) -> [$strat]"
 $dirOpt = (w show-options -gv '@resurrect-dir' 2>&1 | Out-String).Trim()
 Write-Host "  @resurrect-dir (from conf) -> [$dirOpt]"
 
@@ -235,7 +243,7 @@ Write-Host "<<<PAYLOAD_END>>>"
             $payload.SentinelExists "Sentinel: $sentinel"
 
         Check "sentinel records the original command" `
-            ($payload.SentinelContent -match 'cmd=\[shell\]') "Got: [$($payload.SentinelContent)]"
+            ($payload.SentinelContent -match ('cmd=\[' + [regex]::Escape($payload.PaneCommand) + '\]')) "Got: [$($payload.SentinelContent)]"
 
         Check "sentinel records the pane directory" `
             ($payload.SentinelContent -match [regex]::Escape($env:USERPROFILE)) "Got: [$($payload.SentinelContent)]"
