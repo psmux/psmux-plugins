@@ -43,6 +43,10 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 
 ## Options
 
+Set these in `~/.psmux.conf`. psmux runs one server process per session, so a
+`set -g` typed at runtime only reaches the session it targets, while the config
+file is applied to every session as it starts.
+
 ```tmux
 # Custom save directory (default: ~/.psmux/resurrect)
 set -g @resurrect-dir '~/.psmux/resurrect'
@@ -68,7 +72,28 @@ set -g @resurrect-processes '"~rails server" "~npm start"'
 # a running session with a name that matches the save is killed and
 # recreated from the save instead of being left alone.
 set -g @resurrect-overwrite 'on'
+
+# What to do with auto-named sessions (the 0, 1, 2 a bare `psmux` creates).
+#   auto  (default) save one only once you have shaped it: a second window
+#         or pane, or a program other than an idle shell in its pane
+#   on    save every auto-named session (tmux-resurrect behaviour)
+#   off   never save auto-named sessions
+set -g @resurrect-save-unnamed 'auto'
 ```
+
+### Unnamed sessions
+
+A bare `psmux` names its session with the next free number. Saving those
+unconditionally makes them permanent: restore recreates them, the next save
+persists them again, and deleting them from the save files does not help
+because the next auto-save writes them straight back. With the default `auto`
+policy an untouched numbered session (one window, one pane, nothing but an
+idle shell) is left out of the save, since the next bare launch gives you
+exactly that anyway. As soon as you split it, open a second window, or start a
+program from the restore list in it, it is saved like any named session.
+
+Sessions whose names start with `__` are internal to psmux and are never
+saved.
 
 ## Restore Progress Indicator
 
@@ -133,8 +158,8 @@ The general form is `@resurrect-strategy-<program> '<strategy-name>'`, where
 
 At restore time, `<program>_<strategy-name>.ps1` is searched in:
 
-1. `~/.psmux/strategies/<program>_<strategy>.ps1` — your own strategies
-2. `<plugin>/strategies/<program>_<strategy>.ps1` — strategies shipped with the plugin
+1. `~/.psmux/strategies/<program>_<strategy>.ps1` (your own strategies)
+2. `<plugin>/strategies/<program>_<strategy>.ps1` (strategies shipped with the plugin)
 
 The first existing file wins, so user strategies override bundled ones.
 
@@ -175,6 +200,45 @@ Duplicate saves are skipped when the environment has not changed.
   psmux_resurrect_20260225_143022.json
   psmux_resurrect_20260225_150000.json
   last
+```
+
+### Troubleshooting
+
+**Restore says everything is "still running" and nothing comes back.**
+Closing the terminal window does not stop psmux: the client detaches and the
+server, with every session in it, keeps running (see psmux/psmux#585). So the
+sessions you saved are usually still there, and restore leaves a running
+session alone by default. Check with:
+
+```powershell
+psmux ls                 # what is actually running
+psmux attach -t <name>   # go back to one of them
+```
+
+If you really want the saved copy instead, either `psmux kill-server` and
+restore into a fresh server, or set `@resurrect-overwrite 'on'` to have restore
+kill and recreate matching sessions.
+
+**Dozens of numbered sessions.** Each bare `psmux` while the server is still
+running creates one more numbered session. Older plugin versions saved all of
+them; `@resurrect-save-unnamed` (above) now leaves untouched ones out. To clear
+out the ones that already exist: `psmux kill-server`, or
+`psmux kill-session -t <n>` for each.
+
+**Seeing what a save contains.** The `last` file under `~/.psmux/resurrect`
+holds the path of the save that restore will use:
+
+```powershell
+$last = (Get-Content "$env:USERPROFILE\.psmux\resurrect\last" -Raw).Trim()
+(Get-Content $last -Raw | ConvertFrom-Json).sessions | Select-Object name, @{n='windows';e={$_.windows.Count}}
+```
+
+Running the save or restore script directly from a terminal prints the same
+report the key binding shows in its popup, which is the quickest way to see
+what it decided and why:
+
+```powershell
+pwsh -NoProfile -File "$env:USERPROFILE\.psmux\plugins\psmux-resurrect\scripts\restore.ps1"
 ```
 
 ### Restoring a Previous Save

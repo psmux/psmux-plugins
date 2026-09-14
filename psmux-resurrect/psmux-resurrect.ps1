@@ -25,6 +25,7 @@
 #   set -g @resurrect-processes 'false'           # disable process restore
 #   set -g @resurrect-processes ':all:'           # restore all (dangerous)
 #   set -g @resurrect-overwrite 'on'              # kill + recreate existing sessions on restore (default off = skip)
+#   set -g @resurrect-save-unnamed 'auto'         # auto-named sessions: auto = only once shaped (default), on = always, off = never
 #   set -g @resurrect-strategy-<prog> '<name>'    # per-program restore strategy
 # =============================================================================
 

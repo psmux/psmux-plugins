@@ -47,6 +47,50 @@ $env_data = @{
     sessions  = @()
 }
 
+# --- Unnamed session policy (@resurrect-save-unnamed) ---------------------
+# A bare `psmux` names its session with the next free number (0, 1, 2 ...).
+# Persisting those makes them permanent: restore recreates them, the next
+# save re-persists them, and there is no way out of the loop by editing the
+# save files (issue #37). tmux-resurrect saves them regardless, but on
+# Windows a bare launch is the common entry point and the server outlives
+# the terminal window, so stray numbered sessions pile up much faster.
+#
+#   auto (default)  save an auto-named session only once it has been shaped:
+#                   a second window or pane, or a program other than an idle
+#                   shell in its pane. An untouched one is exactly what the
+#                   next bare launch gives you anyway, so it is skipped.
+#   on              save every auto-named session (tmux-resurrect parity).
+#   off             never save auto-named sessions.
+#
+# Internal sessions (names starting with __, e.g. the __warm__ standby) are
+# never saved whatever the setting.
+$saveUnnamed = 'auto'
+try {
+    $unnamedOpt = (& $PSMUX show-options -gv '@resurrect-save-unnamed' 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -and $unnamedOpt -match '^(on|off|auto)$') { $saveUnnamed = $unnamedOpt }
+} catch {}
+
+$idleShells = @('pwsh','powershell','cmd','bash','sh','zsh','fish','nu','elvish','xonsh','shell')
+
+function Test-AutoNamedSession([string]$name) {
+    return ($name -match '^\d+$')
+}
+
+# True when the session still has the shape a bare launch gives it: one
+# window, one pane, nothing but an idle shell running.
+function Test-UntouchedSession($sessionData) {
+    if (@($sessionData.windows).Count -ne 1) { return $false }
+    $w = $sessionData.windows[0]
+    if (@($w.panes).Count -ne 1) { return $false }
+    $cmd = "$($w.panes[0].command)".Trim()
+    if (-not $cmd) { return $true }
+    $base = ($cmd -split '\s+', 2)[0]
+    $base = ($base -split '[\\/]' | Select-Object -Last 1) -replace '\.exe$', ''
+    return ($idleShells -contains $base.ToLowerInvariant())
+}
+
+$skippedSessions = @()
+
 # Get all session names using format flag for clean parsing (retry on empty)
 $sessionLines = ''
 for ($retry = 0; $retry -lt 5; $retry++) {
@@ -57,6 +101,17 @@ for ($retry = 0; $retry -lt 5; $retry++) {
 foreach ($line in ($sessionLines -split "`n")) {
     $sessionName = $line.Trim()
     if ([string]::IsNullOrWhiteSpace($sessionName)) { continue }
+
+    # Cheap name-based exclusions first, before any per-window queries.
+    if ($sessionName.StartsWith('__')) {
+        $skippedSessions += "$sessionName (internal)"
+        continue
+    }
+    $isAutoNamed = Test-AutoNamedSession $sessionName
+    if ($isAutoNamed -and $saveUnnamed -eq 'off') {
+        $skippedSessions += "$sessionName (unnamed)"
+        continue
+    }
 
     $sessionData = @{
         name    = $sessionName
@@ -127,7 +182,17 @@ foreach ($line in ($sessionLines -split "`n")) {
         $sessionData.windows += $windowData
     }
 
+    # The shape check needs the windows and panes gathered above.
+    if ($isAutoNamed -and $saveUnnamed -eq 'auto' -and (Test-UntouchedSession $sessionData)) {
+        $skippedSessions += "$sessionName (unnamed, untouched)"
+        continue
+    }
+
     $env_data.sessions += $sessionData
+}
+
+if ($skippedSessions.Count -gt 0) {
+    Write-Host "psmux-resurrect: not saving $($skippedSessions -join ', ')" -ForegroundColor DarkGray
 }
 
 # Guard: never persist a 0-session snapshot.
@@ -142,6 +207,13 @@ foreach ($line in ($sessionLines -split "`n")) {
 # windows/panes -- has >=1 session, so it passes this guard and is still written. Closing
 # that needs an expected-session-count signal we don't have here; tracked as a follow-up.)
 if (@($env_data.sessions).Count -eq 0) {
+    if ($skippedSessions.Count -gt 0) {
+        # Sessions exist but every one of them was filtered out above. Say so
+        # explicitly: this is the unnamed policy at work, not a dead server.
+        & $PSMUX display-message "Nothing to save: only unnamed or internal sessions are running (see @resurrect-save-unnamed)." 2>&1 | Out-Null
+        Write-Host "psmux-resurrect: nothing to save, every running session was skipped (set @resurrect-save-unnamed 'on' to keep unnamed sessions)." -ForegroundColor Yellow
+        exit 0
+    }
     & $PSMUX display-message "No sessions to save, skipping." 2>&1 | Out-Null
     Write-Host "psmux-resurrect: No sessions captured, skipping save (server likely down)." -ForegroundColor Yellow
     exit 0
@@ -203,7 +275,10 @@ if ($shouldWrite) {
         }
     }
 
-    & $PSMUX display-message "Environment saved! ($($env_data.sessions.Count) sessions)" 2>&1 | Out-Null
+    $savedMsg = "Environment saved! ($($env_data.sessions.Count) sessions"
+    if ($skippedSessions.Count -gt 0) { $savedMsg += ", $($skippedSessions.Count) skipped" }
+    $savedMsg += ")"
+    & $PSMUX display-message $savedMsg 2>&1 | Out-Null
     Write-Host "psmux-resurrect: Saved to $saveFile" -ForegroundColor Green
 } else {
     # No changes, skip writing a duplicate
