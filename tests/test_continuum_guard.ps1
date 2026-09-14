@@ -34,6 +34,13 @@ Check "psmux-continuum.ps1 here-string breaks on empty output" ($contRaw.Contain
 Check "both copies retain the #24 single-instance mutex" `
     ($autoRaw.Contains('psmux-continuum-autosave') -and $contRaw.Contains('psmux-continuum-autosave'))
 
+# both copies read @continuum-save-interval on every lap (issue #37 side note: the
+# option was documented but only the hook's -IntervalMinutes 15 was ever honoured)
+Check "both copies honour @continuum-save-interval" `
+    ($autoRaw.Contains("show-options -gv '@continuum-save-interval'") -and $contRaw.Contains("show-options -gv '@continuum-save-interval'"))
+Check "both copies stop the loop on interval 0" `
+    ($autoRaw.Contains('if ($minutes -le 0)') -and $contRaw.Contains('if ($minutes -le 0)'))
+
 # the here-string regenerates byte-identical to the committed file (drift guard).
 # NB: compares the embedded literal rather than executing psmux-continuum.ps1 (which
 # has side effects: Start-Job, psmux calls). A future rename of $autoSaveScript would
@@ -56,7 +63,7 @@ Check "decision: server UP (exit 0, real sessions) -> keep looping"        (-not
 Check "decision: hard error (exit 1) -> break"                                    (& $break 1 'error: connect failed')
 
 # --- Premise proof (the reason the OLD exit-code-only check failed) ----------
-# The whole bug rests on: psmux returns EXIT 0 with EMPTY output when no server exists.
+# The bug rested on: psmux returned EXIT 0 with EMPTY output when no server existed.
 # Prove it with the REAL binary against a THROWAWAY socket -- this does NOT touch the
 # user's default server. Skips cleanly if no psmux is installed (keeps the suite runnable
 # on a binary-less/CI box).
@@ -66,8 +73,12 @@ if ($psmuxBin) {
     $sock = 'psmux-guardtest-' + ([guid]::NewGuid().ToString('N').Substring(0,8))
     $premiseOut = & $psmuxBin -L $sock ls 2>&1 | Out-String
     $premiseCode = $LASTEXITCODE
-    Check "PREMISE: real psmux '-L <no server> ls' exits 0 (not non-zero)" ($premiseCode -eq 0) "exit=$premiseCode"
-    Check "PREMISE: real psmux '-L <no server> ls' emits empty output"     (-not $premiseOut.Trim()) "out=[$($premiseOut.Trim())]"
+    # psmux used to answer a missing server with exit 0 and empty output (the
+    # shape the old exit-code-only check missed); since 3.3.8 it exits 1 with a
+    # "no server running" line like tmux. The guard must break on either shape.
+    $noServer = ($premiseCode -ne 0) -or (-not $premiseOut.Trim())
+    Check "PREMISE: real psmux '-L <no server> ls' signals no server (non-zero exit or empty output)" $noServer "exit=$premiseCode out=[$($premiseOut.Trim())]"
+    Check "PREMISE: the shipped break condition fires on the real no-server result" (& $break $premiseCode $premiseOut) "exit=$premiseCode out=[$($premiseOut.Trim())]"
 } else {
     Write-Host "  SKIP: no psmux binary on PATH -> premise check skipped" -ForegroundColor DarkGray
 }

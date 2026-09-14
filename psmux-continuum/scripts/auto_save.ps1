@@ -43,11 +43,26 @@ if (-not (Test-Path $saveScript)) {
     exit 1
 }
 
-$IntervalSeconds = $IntervalMinutes * 60
+# @continuum-save-interval wins over the -IntervalMinutes the hook passes,
+# so the documented option actually changes the cadence (issue #37). It is
+# re-read on every lap so a change made in a running server takes effect
+# without a restart; 0 stops the loop.
+function Get-SaveIntervalMinutes {
+    try {
+        $opt = (& $PSMUX show-options -gv '@continuum-save-interval' 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $opt -match '^\d+$') { return [int]$opt }
+    } catch {}
+    return $IntervalMinutes
+}
 
 try {
     while ($true) {
-        Start-Sleep -Seconds $IntervalSeconds
+        $minutes = Get-SaveIntervalMinutes
+        if ($minutes -le 0) {
+            Write-Host "psmux-continuum: auto-save disabled (@continuum-save-interval 0)." -ForegroundColor Yellow
+            break
+        }
+        Start-Sleep -Seconds ($minutes * 60)
 
         # Check if psmux server is still running.
         # NOTE: psmux returns exit 0 with EMPTY output when no server exists, so the
