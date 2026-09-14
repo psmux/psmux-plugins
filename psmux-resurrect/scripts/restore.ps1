@@ -150,6 +150,11 @@ try {
 
     $totalSessions = $env_data.sessions.Count
     $startTime = Get-Date
+
+    # Everything written to stdout here ends up in the run-shell popup when
+    # restore is bound to a key, so keep it to a few lines: a header naming
+    # the save, one line per restored session, one line for all skips.
+    Write-Host "psmux-resurrect: restoring $totalSessions sessions from $(Split-Path $saveFile -Leaf)" -ForegroundColor DarkGray
     $restoredCount = 0
     $overwrittenCount = 0
     $skipped = @()
@@ -176,7 +181,6 @@ try {
         $null = & $PSMUX has-session -t $sessionName 2>&1
         if ($LASTEXITCODE -eq 0) {
             if (-not $overwriteExisting) {
-                Write-Host "  Session '$sessionName' already exists, skipping" -ForegroundColor Yellow
                 $skipped += $sessionName
                 continue
             }
@@ -338,6 +342,16 @@ try {
         Write-Host "  Restored session: $sessionName ($($session.windows.Count) windows)" -ForegroundColor Green
     }
 
+    if ($skipped.Count -gt 0) {
+        # A saved session that is still running is left alone. Collapse the
+        # whole list into one line: a save made from a server that outlived
+        # its terminal window can hold dozens of them (issue #35).
+        $shown = @($skipped | Select-Object -First 8)
+        $more = if ($skipped.Count -gt $shown.Count) { " and $($skipped.Count - $shown.Count) more" } else { '' }
+        Write-Host "  Still running, left alone: $($shown -join ', ')$more" -ForegroundColor Yellow
+        Write-Host "  (attach with 'psmux attach -t <name>', or set @resurrect-overwrite 'on' to recreate them from the save)" -ForegroundColor DarkGray
+    }
+
     $elapsed = ((Get-Date) - $startTime).TotalSeconds
     $elapsedStr = [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0:F1}s", $elapsed)
 
@@ -347,11 +361,19 @@ try {
     }
     if ($skipped.Count -gt 0) {
         $summary = "psmux-resurrect: restored $restoredCount/$totalSessions, skipped $($skipped.Count) (already running)"
+        if ($restoredCount -eq 0) {
+            # Nothing came back because nothing had gone away: the sessions in
+            # the save are all still alive on the server (psmux ls shows them).
+            $summary = "psmux-resurrect: nothing to restore, all $($skipped.Count) saved sessions are still running (psmux ls to see them, @resurrect-overwrite 'on' to recreate)"
+        }
     }
     if ($failed.Count -gt 0) {
         $summary += " - failed: $($failed -join ', ')"
     }
 
+    # The summary goes to stdout too, so the run-shell popup and a terminal
+    # run both end with the same line the toast shows.
+    Write-Host $summary -ForegroundColor $(if ($restoredCount -gt 0) { 'Green' } else { 'Yellow' })
     Set-ResurrectStatus $summary
     & $PSMUX display-message -d $SUMMARY_TOAST_MS $summary 2>&1 | Out-Null
     & $PSMUX refresh-client -S 2>&1 | Out-Null

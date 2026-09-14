@@ -62,9 +62,9 @@ Check "plugin.conf exists" (Test-Path (Join-Path $PLUGIN_ROOT 'psmux-resurrect\p
 
 # Verify scripts use format flags (the fix), not fragile regex
 $saveContent = Get-Content $SAVE_SCRIPT -Raw
-Check "save.ps1 uses list-sessions -F format" ($saveContent -match "ls\s+.*-F\s+'#\{session_name\}'") "Uses format flags for clean session parsing"
-Check "save.ps1 uses list-windows -F format" ($saveContent -match "list-windows.*-F\s+'#\{window_index\}") "Uses format flags for clean window parsing"
-Check "save.ps1 uses list-panes -F format" ($saveContent -match "list-panes.*-F\s+'#\{pane_index\}") "Uses format flags for clean pane parsing"
+Check "save.ps1 uses list-sessions -F format" ($saveContent -match "list-sessions\s+-F\s+'#\{session_name\}'") "Uses format flags for clean session parsing"
+Check "save.ps1 uses list-windows -F format" ($saveContent -match "winFmt\s*=\s*'#\{window_index\}" -and $saveContent -match "list-windows\s+-t\s+\`$sessionName\s+-F\s+\`$winFmt") "Uses format flags for clean window parsing"
+Check "save.ps1 uses list-panes -F format" ($saveContent -match "paneFmt\s*=\s*'#\{pane_index\}" -and $saveContent -match "list-panes\s+-t\s+.*-F\s+\`$paneFmt") "Uses format flags for clean pane parsing"
 Check "save.ps1 uses show-options -gv" ($saveContent -match "show-options\s+-gv") "Uses value-only flag"
 
 # =============================================================================
@@ -76,8 +76,14 @@ Write-Host "`n--- Phase 2: Prerequisite Checks ---" -ForegroundColor Yellow
 $fmtTest = (& $PSMUX ls -F '#{session_name}' 2>&1 | Out-String).Trim()
 Check "list-sessions -F works" (-not [string]::IsNullOrWhiteSpace($fmtTest) -or $true) "format expansion works"
 
+# psmux, like tmux, refuses option queries with no server running, so keep a
+# session alive for the prerequisite checks.
+& $PSMUX new-session -d -s res_test_keep 2>&1 | Out-Null
+Start-Sleep -Seconds 1
 $optTest = (& $PSMUX show-options -gv base-index 2>&1 | Out-String).Trim()
 Check "show-options -gv works" ($optTest -match '^\d+$') "Returns value only: $optTest"
+& $PSMUX kill-session -t res_test_keep 2>&1 | Out-Null
+Start-Sleep -Seconds 1
 
 # =============================================================================
 # PHASE 3: Create Test Environment
@@ -271,8 +277,10 @@ Check "gamma:0 restored with 1 pane" ($rGammaPanes.Count -eq 1)
 Write-Host "`n--- Phase 7: Idempotency Test ---" -ForegroundColor Yellow
 
 $restoreAgain = pwsh -NoProfile -ExecutionPolicy Bypass -File $RESTORE_SCRIPT 2>&1 | Out-String
-$skipped = ($restoreAgain | Select-String 'already exists').Matches.Count
-Check "restore skips existing sessions" ($restoreAgain -match 'already exists')
+# Skipped sessions are reported on one collapsed line (issue #35), not one
+# "already exists" line per session.
+Check "restore skips existing sessions" ($restoreAgain -match 'Still running, left alone: .*res_test_alpha' -and $restoreAgain -match 'nothing to restore, all 3 saved sessions are still running') "Got: $restoreAgain"
+Check "restore does not print one line per skipped session" ($restoreAgain -notmatch 'already exists') "Got: $restoreAgain"
 
 # =============================================================================
 # PHASE 8: show-options -v compatibility
@@ -338,7 +346,7 @@ Remove-Item $testConf -Force -ErrorAction SilentlyContinue
 # CLEANUP
 # =============================================================================
 Write-Host "`n--- Cleanup ---" -ForegroundColor Yellow
-foreach ($s in @('res_test_alpha', 'res_test_beta', 'res_test_gamma')) {
+foreach ($s in @('res_test_alpha', 'res_test_beta', 'res_test_gamma', 'res_test_keep')) {
     & $PSMUX kill-session -t $s 2>&1 | Out-Null
 }
 
