@@ -29,6 +29,17 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 - Window flags
 - Pane contents (optional)
 
+### Capture failures
+
+Save captures each session's windows and panes in one query. A failed or empty
+structural query, or malformed pane data, retries the complete capture after
+2, 4 and 6 seconds. If all four attempts fail, save exits with an error and
+leaves existing snapshots and `last` unchanged. Sessions excluded by the unnamed
+or internal-session policy do not trigger retries.
+
+Save-command strategies run after the structural capture succeeds. Failed
+optional pane-content queries omit that pane's contents without retrying.
+
 ## What Gets Restored
 
 - All sessions (idempotent by default: a session that is still running is kept, and only the saved windows it is missing are added to it; see `@resurrect-overwrite` below)
@@ -191,6 +202,48 @@ to the original saved command, so a broken strategy never blocks a restore.
 | Strategy | Activated by | Behavior |
 |----------|-----------------------------------|----------|
 | `nvim_session` | `set -g @resurrect-strategy-nvim 'session'` | Restores `nvim -S` if `Session.vim` exists in the pane's directory (e.g. via [vim-obsession](https://github.com/tpope/vim-obsession)); otherwise falls back to bare `nvim`. |
+
+## Save-Command Strategies
+
+A save-command strategy captures a richer command while the pane's process is
+still running, such as `mytool --resume=<session-id>`. It can use the live pane
+PID to identify the session that belongs to that pane. The strategy runs for
+each pane included in the snapshot.
+
+Set the strategy in `~/.psmux.conf`:
+
+```tmux
+set -g @resurrect-save-command-strategy 'resume'
+set -g @resurrect-processes '~mytool'
+```
+
+The plugin searches for `resume.ps1` in
+`~/.psmux/strategies/save_command_strategies/`, then in
+`<plugin>/strategies/save_command_strategies/`. The first existing script wins.
+The bundled `default.ps1` echoes the original command and serves as a reference.
+
+A strategy receives three positional arguments and writes the command to stdout:
+
+```powershell
+# ~/.psmux/strategies/save_command_strategies/resume.ps1
+param([string]$Command, [string]$PanePid, [string]$Directory)
+
+# Use the command, live pane PID and working directory to resolve tool state.
+# Echo the original command when no richer command is available.
+$Command
+```
+
+The first nonempty stdout line is trimmed and stored in the existing `command`
+field. With the option unset, the original command is preserved and no strategy
+process is started. A missing script, nonzero exit, terminating error, or empty
+stdout also preserves the original command. Save waits for each strategy
+process to exit.
+
+The PID comes from `#{pane_pid}` and is passed to the strategy without being
+stored in the snapshot. Unnamed-session filtering uses the original live command
+before strategies run. Restore still applies `@resurrect-processes` to the saved
+command; use a `~` entry for commands with arguments, as above. Per-program
+restore strategies then receive that saved command.
 
 ## Save File Format
 

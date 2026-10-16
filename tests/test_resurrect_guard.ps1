@@ -11,10 +11,8 @@
 #   - server down (0 sessions): no snapshot written, `last` preserved byte-identical
 #     (both with a prior good `last` and on a virgin dir -> guard, not dedup).
 #   - server up (>=1 session): still writes + repoints (no false skip).
-#   - KNOWN GAP (characterization, not a fix): a PARTIAL capture (a session reported
-#     but mid-startup with no windows yet) is NOT caught by the 0-session guard -- it
-#     has >=1 session so it is still written, degraded. Pinned so a future fix has a
-#     target. Tracked as a follow-up in the PR.
+#   - partial capture: an enumerated session returns no panes, so the prior
+#     snapshot and 'last' survive the failed capture.
 # (The continuum break-on-empty / here-string drift asserts live in
 #  test_continuum_guard.ps1 so this file stays green on the resurrect-only PR branch.)
 # Run:  pwsh -File tests/test_resurrect_guard.ps1
@@ -49,20 +47,22 @@ function Set-FakePsmux([ValidateSet('down','up','partial')][string]$Mode) {
         'up'   { Set-Content $impl @'
 $a = $args
 if ($a[0] -eq 'list-sessions') { 'alpha'; exit 0 }
-if ($a[0] -eq 'list-windows')  { '0|main|1|c2be,80x24,0,0,1|0|'; exit 0 }
-if ($a[0] -eq 'list-panes')    { '0|C:\Users\Public|1|title|pwsh'; exit 0 }
+if ($a[0] -eq 'list-panes') {
+    $row = (@(0, 'main', 1, 'c2be,80x24,0,0,1', 0, '', 0, 'C:\Users\Public', 1, 'title', 1234, 'pwsh') | ForEach-Object { ([string]$_).Replace('\', '\\') }) -join "`t"
+    [Console]::Write($row + "`n")
+    exit 0
+}
 exit 0
 '@ -Encoding UTF8 }
         'partial' { Set-Content $impl @'
-# Two sessions reported, but 'beta' is mid-startup: it has no windows yet.
-# A real partial capture -- distinct from 'up' -- to characterize the known gap.
 $a = $args
 if ($a[0] -eq 'list-sessions') { 'alpha'; 'beta'; exit 0 }
-if ($a[0] -eq 'list-windows') {
-    if ($a -contains 'beta') { exit 0 }                       # beta: no windows yet
-    '0|main|1|c2be,80x24,0,0,1|0|'; exit 0                     # alpha: one window
+if ($a[0] -eq 'list-panes') {
+    if ($a -contains 'beta') { exit 0 }
+    $row = (@(0, 'main', 1, 'c2be,80x24,0,0,1', 0, '', 0, 'C:\Users\Public', 1, 'title', 1234, 'pwsh') | ForEach-Object { ([string]$_).Replace('\', '\\') }) -join "`t"
+    [Console]::Write($row + "`n")
+    exit 0
 }
-if ($a[0] -eq 'list-panes') { '0|C:\Users\Public|1|title|pwsh'; exit 0 }
 exit 0
 '@ -Encoding UTF8 }
     }
@@ -73,12 +73,12 @@ function Invoke-Save {
         $env:USERPROFILE = $sandbox
         $env:PATH = "$binDir;$env:PATH"
         $env:PATHEXT = ".PS1;$env:PATHEXT"   # so Get-Command psmux resolves psmux.ps1
-        & pwsh -NoProfile -File $SAVE_SCRIPT *>$null
+        $invocation = "function Start-Sleep {}; & '$($SAVE_SCRIPT.Replace("'", "''"))'"
+        & pwsh -NoProfile -Command $invocation *>$null
     }
     finally { $env:USERPROFILE = $u; $env:PATH = $p; $env:PATHEXT = $x }
 }
 function SnapCount { @(Get-ChildItem $resurrect -Filter 'psmux_resurrect_*.json' -ErrorAction SilentlyContinue).Count }
-function Newest-Snap { Get-ChildItem $resurrect -Filter 'psmux_resurrect_*.json' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1 }
 function Reset-GoodLast {
     Get-ChildItem $resurrect -File -ErrorAction SilentlyContinue | Remove-Item -Force
     $good = Join-Path $resurrect 'psmux_resurrect_20260101_120000.json'
@@ -110,22 +110,14 @@ try {
     Invoke-Save
     Check "live session still writes a snapshot (no false skip)" ((SnapCount) -eq ($before + 1))
 
-    # 4. KNOWN GAP (characterization, not a fix): a PARTIAL capture is still written.
-    #    'partial' reports alpha (1 window) + beta (0 windows, mid-startup). The 0-session
-    #    guard sees >=1 session so it does NOT skip -> a degraded snapshot is persisted.
-    #    Pin both that it writes AND that the degradation (beta with no windows) is what
-    #    landed, so a future partial-capture fix has a concrete red/green target.
     Reset-GoodLast
     Set-FakePsmux 'partial'
     $before = SnapCount
+    $lastBefore = Get-Content (Join-Path $resurrect 'last') -Raw
     Invoke-Save
-    Check "[known-gap] partial capture is still written (follow-up target)" ((SnapCount) -eq ($before + 1))
-    $snap = Newest-Snap
-    $obj  = if ($snap) { Get-Content $snap.FullName -Raw | ConvertFrom-Json } else { $null }
-    $alpha = if ($obj) { $obj.sessions | Where-Object { $_.name -eq 'alpha' } } else { $null }
-    $beta  = if ($obj) { $obj.sessions | Where-Object { $_.name -eq 'beta' } }  else { $null }
-    Check "[known-gap] the persisted snapshot is degraded (alpha has windows, beta has none)" `
-        ($alpha -and $beta -and (@($alpha.windows).Count -ge 1) -and (-not $beta.windows))
+    Check "partial capture writes no new snapshot" ((SnapCount) -eq $before)
+    Check "partial capture preserves 'last' byte-identically" `
+        ((Get-Content (Join-Path $resurrect 'last') -Raw) -ceq $lastBefore)
 }
 finally {
     Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue
