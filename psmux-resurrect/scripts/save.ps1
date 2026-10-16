@@ -13,6 +13,8 @@ function Get-PsmuxBin {
 }
 
 $PSMUX = Get-PsmuxBin
+$PLUGIN_DIR = Split-Path $PSScriptRoot -Parent
+. (Join-Path $PSScriptRoot 'save_strategy.ps1')
 
 # Resolve save directory (support @resurrect-dir option)
 $RESURRECT_DIR = Join-Path $env:USERPROFILE '.psmux\resurrect'
@@ -117,6 +119,7 @@ foreach ($line in ($sessionLines -split "`n")) {
         name    = $sessionName
         windows = @()
     }
+    $saveCommands = @()
 
     # Get windows: index, name, active, layout, zoomed flag, flags
     $winFmt = '#{window_index}|#{window_name}|#{window_active}|#{window_layout}|#{window_zoomed_flag}|#{window_flags}'
@@ -145,19 +148,20 @@ foreach ($line in ($sessionLines -split "`n")) {
             panes  = @()
         }
 
-        # Get panes: index, path, active, title, current_command
-        $paneFmt = '#{pane_index}|#{pane_current_path}|#{pane_active}|#{pane_title}|#{pane_current_command}'
+        # Get panes: index, path, active, title, current_command, pid
+        $paneFmt = '#{pane_index}|#{pane_current_path}|#{pane_active}|#{pane_title}|#{pane_current_command}|#{pane_pid}'
         $paneLines = (& $PSMUX list-panes -t "${sessionName}:${winIndex}" -F $paneFmt 2>&1) | Out-String
         foreach ($pline in ($paneLines -split "`n")) {
             $pline = $pline.Trim()
             if ([string]::IsNullOrWhiteSpace($pline)) { continue }
 
-            $pParts = $pline -split '\|', 5
+            $pParts = $pline -split '\|', 6
             $paneIdx  = if ($pParts.Count -ge 1) { [int]$pParts[0] } else { 0 }
             $paneDir  = if ($pParts.Count -ge 2 -and $pParts[1]) { $pParts[1] } else { $env:USERPROFILE }
             $paneAct  = if ($pParts.Count -ge 3) { $pParts[2] } else { '0' }
             $paneTtl  = if ($pParts.Count -ge 4) { $pParts[3] } else { '' }
             $paneCmd  = if ($pParts.Count -ge 5) { $pParts[4] } else { '' }
+            $panePid  = if ($pParts.Count -ge 6) { $pParts[5] } else { '' }
 
             $paneData = @{
                 index     = $paneIdx
@@ -177,6 +181,7 @@ foreach ($line in ($sessionLines -split "`n")) {
             }
 
             $windowData.panes += $paneData
+            $saveCommands += @{ Pane = $paneData; Pid = $panePid }
         }
 
         $sessionData.windows += $windowData
@@ -188,6 +193,13 @@ foreach ($line in ($sessionLines -split "`n")) {
         continue
     }
 
+    # Filter using the live commands before strategies rewrite them. Only panes
+    # included in the snapshot run a strategy; their PIDs are not persisted.
+    foreach ($entry in $saveCommands) {
+        $pane = $entry.Pane
+        $pane.command = Get-SaveCommand -PaneCommand $pane.command -PanePid $entry.Pid `
+            -Directory $pane.directory -PsmuxBin $PSMUX -PluginDir $PLUGIN_DIR
+    }
     $env_data.sessions += $sessionData
 }
 

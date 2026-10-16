@@ -192,6 +192,48 @@ to the original saved command, so a broken strategy never blocks a restore.
 |----------|-----------------------------------|----------|
 | `nvim_session` | `set -g @resurrect-strategy-nvim 'session'` | Restores `nvim -S` if `Session.vim` exists in the pane's directory (e.g. via [vim-obsession](https://github.com/tpope/vim-obsession)); otherwise falls back to bare `nvim`. |
 
+## Save-Command Strategies
+
+A save-command strategy captures a richer command while the pane's process is
+still running, such as `mytool --resume=<session-id>`. It can use the live pane
+PID to identify the session that belongs to that pane. The strategy runs for
+each pane included in the snapshot.
+
+Set the strategy in `~/.psmux.conf`:
+
+```tmux
+set -g @resurrect-save-command-strategy 'resume'
+set -g @resurrect-processes '~mytool'
+```
+
+The plugin searches for `resume.ps1` in
+`~/.psmux/strategies/save_command_strategies/`, then in
+`<plugin>/strategies/save_command_strategies/`. The first existing script wins.
+The bundled `default.ps1` echoes the original command and serves as a reference.
+
+A strategy receives three positional arguments and writes the command to stdout:
+
+```powershell
+# ~/.psmux/strategies/save_command_strategies/resume.ps1
+param([string]$Command, [string]$PanePid, [string]$Directory)
+
+# Use the command, live pane PID and working directory to resolve tool state.
+# Echo the original command when no richer command is available.
+$Command
+```
+
+The first nonempty stdout line is trimmed and stored in the existing `command`
+field. With the option unset, the original command is preserved and no strategy
+process is started. A missing script, nonzero exit, terminating error, or empty
+stdout also preserves the original command. Save waits for each strategy
+process to exit.
+
+The PID comes from `#{pane_pid}` and is passed to the strategy without being
+stored in the snapshot. Unnamed-session filtering uses the original live command
+before strategies run. Restore still applies `@resurrect-processes` to the saved
+command; use a `~` entry for commands with arguments, as above. Per-program
+restore strategies then receive that saved command.
+
 ## Save File Format
 
 Saves are stored as JSON files with timestamps. The `last` file always points to the most recent save. A maximum of 20 backups are kept; older files are automatically pruned.
