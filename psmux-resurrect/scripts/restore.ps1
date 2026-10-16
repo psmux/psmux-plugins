@@ -91,7 +91,17 @@ if (-not (Test-Path $saveFile)) {
     exit 1
 }
 
+# Share one lock across this user's sessions, terminal windows and Continuum hooks.
+$userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$restoreMutex = [Threading.Mutex]::new($false, "Global\psmux-resurrect-restore-$userSid")
+$ownsRestoreMutex = $false
 try {
+    try { $ownsRestoreMutex = $restoreMutex.WaitOne(0) }
+    catch [Threading.AbandonedMutexException] { $ownsRestoreMutex = $true }
+    if (-not $ownsRestoreMutex) {
+        Write-Host 'psmux-resurrect: another restore is in progress; skipping this request.'
+        exit 0
+    }
     $env_data = Get-Content $saveFile -Raw | ConvertFrom-Json
 
     # --- Build process restore list ---
@@ -441,6 +451,13 @@ try {
     Start-Sleep -Milliseconds $SUMMARY_TOAST_MS
 }
 finally {
-    Clear-ResurrectStatus
-    & $PSMUX refresh-client -S 2>&1 | Out-Null
+    try {
+        if ($ownsRestoreMutex) {
+            Clear-ResurrectStatus
+            & $PSMUX refresh-client -S 2>&1 | Out-Null
+        }
+    } finally {
+        if ($ownsRestoreMutex) { $restoreMutex.ReleaseMutex() }
+        $restoreMutex.Dispose()
+    }
 }

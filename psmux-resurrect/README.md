@@ -41,6 +41,11 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 - Running processes from the restore list (configurable)
 - Active window selection per session
 
+A Windows-user-wide mutex allows one restore at a time, across sessions and
+terminal windows. Overlapping requests report that a restore is in progress and
+skip successfully. Windows releases the mutex if the process exits or crashes;
+this does not roll back an interrupted restore.
+
 ## Options
 
 Set these in `~/.psmux.conf`. psmux runs one server process per session, so a
