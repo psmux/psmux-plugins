@@ -3,6 +3,7 @@
 # Restores: sessions, windows, panes, layouts, active pane per window,
 #           zoomed panes, pane titles, running processes (configurable),
 #           window flags, active window selection
+param([string]$InitialSession = '')
 $ErrorActionPreference = 'Continue'
 
 # psmux refuses `new-session` when PSMUX_SESSION/PSMUX_ACTIVE is set
@@ -91,7 +92,17 @@ if (-not (Test-Path $saveFile)) {
     exit 1
 }
 
+# Share one lock across this user's sessions, terminal windows and Continuum hooks.
+$userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$restoreMutex = [Threading.Mutex]::new($false, "Global\psmux-resurrect-restore-$userSid")
+$ownsRestoreMutex = $false
 try {
+    try { $ownsRestoreMutex = $restoreMutex.WaitOne(0) }
+    catch [Threading.AbandonedMutexException] { $ownsRestoreMutex = $true }
+    if (-not $ownsRestoreMutex) {
+        Write-Host 'psmux-resurrect: another restore is in progress; skipping this request.'
+        exit 0
+    }
     $env_data = Get-Content $saveFile -Raw | ConvertFrom-Json
 
     # --- Build process restore list ---
@@ -148,6 +159,14 @@ try {
         $overwriteOpt = (& $PSMUX show-options -gv '@resurrect-overwrite' 2>&1 | Out-String).Trim()
         if ($LASTEXITCODE -eq 0 -and $overwriteOpt -eq 'on') { $overwriteExisting = $true }
     } catch {}
+
+    # Continuum passes the session that triggered startup. Resolve its short
+    # name through psmux, since the hook's routing name can include a namespace.
+    $initialSessionName = $null
+    if ($InitialSession -and -not $overwriteExisting) {
+        $names = @(& $PSMUX display-message -p -t "${InitialSession}:" '#{session_name}' 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $names.Count -eq 1) { $initialSessionName = $names[0] }
+    }
 
     $totalSessions = $env_data.sessions.Count
     $startTime = Get-Date
@@ -264,7 +283,17 @@ try {
                 # stable across the save and the live server; names are not (an
                 # unnamed window is called after whatever runs in it, and several
                 # windows commonly share 'pwsh'). Windows already present are not
-                # touched, and the session's active window is left where it is.
+                # touched, and the session's active window is left where it is,
+                # except for Continuum's sole initial pane during startup.
+                $startupWindow = $null
+                $startupPane = $null
+                if ($sessionName -ceq $initialSessionName) {
+                    $rows = @(& $PSMUX list-panes -s -t $InitialSession -F '#{window_index}|#{pane_index}' 2>$null)
+                    if ($LASTEXITCODE -eq 0 -and $rows.Count -eq 1 -and "$($rows[0])" -match '^(\d+)\|(\d+)$') {
+                        $startupWindow = [int]$Matches[1]
+                        $startupPane = "${sessionName}:$startupWindow.$($Matches[2])"
+                    }
+                }
                 $liveIndexes = @{}
                 $activeBefore = $null
                 foreach ($line in @(& $PSMUX list-windows -t $sessionName -F '#{window_index}|#{window_active}' 2>&1)) {
@@ -274,29 +303,49 @@ try {
                     }
                 }
                 $added = 0
+                $startupRestored = $false
+                $savedActivePane = $null
                 foreach ($win in @($session.windows)) {
-                    if ($liveIndexes.ContainsKey([int]$win.index)) { continue }
                     $winDir = if ($win.panes -and $win.panes[0].directory) { $win.panes[0].directory } else { $env:USERPROFILE }
-                    # psmux's new-window cannot create at a free index directly
-                    # (tmux can), so create detached at the next free slot and
-                    # move the window to its saved index afterwards.
-                    $newWinArgs = @('-d', '-t', $sessionName, '-c', $winDir)
-                    if ($win.name) { $newWinArgs += @('-n', $win.name) }
-                    $winPaneId = Get-PaneId (& $PSMUX new-window @newWinArgs -P -F '#{pane_id}' 2>&1)
-                    if (-not $winPaneId) { continue }
-                    $gotIndex = (& $PSMUX display-message -p -t $winPaneId '#{window_index}' 2>&1 | Out-String).Trim()
-                    if ($gotIndex -match '^\d+$' -and [int]$gotIndex -ne [int]$win.index) {
-                        & $PSMUX move-window -s "${sessionName}:$gotIndex" -t "${sessionName}:$($win.index)" 2>&1 | Out-Null
+                    if ($liveIndexes.ContainsKey([int]$win.index)) {
+                        if ($null -eq $startupWindow -or [int]$win.index -ne $startupWindow) { continue }
+                        # Startup owns this pane until restore finishes. Use a
+                        # qualified target: pane ids repeat across servers.
+                        & $PSMUX respawn-pane -k -t $startupPane -c $winDir 2>&1 | Out-Null
+                        if ($LASTEXITCODE -ne 0) { throw "Could not restart startup pane $startupPane" }
+                        if ($win.name) { & $PSMUX rename-window -t "${sessionName}:$($win.index)" $win.name 2>&1 | Out-Null }
+                        $winPaneId = $startupPane
+                        $startupRestored = $true
+                    } else {
+                        # psmux's new-window cannot create at a free index directly
+                        # (tmux can), so create detached at the next free slot and
+                        # move the window to its saved index afterwards.
+                        $newWinArgs = @('-d', '-t', $sessionName, '-c', $winDir)
+                        if ($win.name) { $newWinArgs += @('-n', $win.name) }
+                        $winPaneId = Get-PaneId (& $PSMUX new-window @newWinArgs -P -F '#{pane_id}' 2>&1)
+                        if (-not $winPaneId) { continue }
+                        $gotIndex = (& $PSMUX display-message -p -t $winPaneId '#{window_index}' 2>&1 | Out-String).Trim()
+                        if ($gotIndex -match '^\d+$' -and [int]$gotIndex -ne [int]$win.index) {
+                            & $PSMUX move-window -s "${sessionName}:$gotIndex" -t "${sessionName}:$($win.index)" 2>&1 | Out-Null
+                        }
+                        $added++
                     }
-                    $null = Restore-WindowPanes -win $win -initialPaneId $winPaneId -WindowTarget "${sessionName}:$($win.index)"
-                    $added++
+                    $activePane = Restore-WindowPanes -win $win -initialPaneId $winPaneId -WindowTarget "${sessionName}:$($win.index)"
+                    if ($win.active -eq $true) { $savedActivePane = $activePane }
                 }
-                if ($added -gt 0 -and $null -ne $activeBefore) {
+                if ($startupRestored -and $savedActivePane) {
+                    & $PSMUX select-window -t $savedActivePane 2>&1 | Out-Null
+                    & $PSMUX select-pane -t $savedActivePane 2>&1 | Out-Null
+                } elseif ($added -gt 0 -and $null -ne $activeBefore) {
                     # new-window -d and move-window can still shift focus; put the
                     # running session back on the window its user had selected.
                     & $PSMUX select-window -t "${sessionName}:$activeBefore" 2>&1 | Out-Null
                 }
-                if ($added -gt 0) {
+                if ($startupRestored) {
+                    $restoredCount++
+                    $totalWindows += $added + 1
+                    Write-Host "  Restored startup session: $sessionName ($($added + 1) windows)" -ForegroundColor Green
+                } elseif ($added -gt 0) {
                     $reused += "$sessionName ($added windows)"
                     $reusedWindows += $added
                     Write-Host "  Kept running session: $sessionName ($added missing windows added)" -ForegroundColor Green
@@ -441,6 +490,13 @@ try {
     Start-Sleep -Milliseconds $SUMMARY_TOAST_MS
 }
 finally {
-    Clear-ResurrectStatus
-    & $PSMUX refresh-client -S 2>&1 | Out-Null
+    try {
+        if ($ownsRestoreMutex) {
+            Clear-ResurrectStatus
+            & $PSMUX refresh-client -S 2>&1 | Out-Null
+        }
+    } finally {
+        if ($ownsRestoreMutex) { $restoreMutex.ReleaseMutex() }
+        $restoreMutex.Dispose()
+    }
 }

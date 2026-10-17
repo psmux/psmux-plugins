@@ -32,5 +32,7 @@ $resurrectDir = Join-Path $env:USERPROFILE '.psmux\resurrect'
 $lastFile = Join-Path $resurrectDir 'last'
 
 if ((Test-Path $restoreScript) -and (Test-Path $lastFile)) {
-    & pwsh -NoProfile -File $restoreScript
+    $restoreArgs = @()
+    if ($env:PSMUX_TARGET_SESSION) { $restoreArgs = @('-InitialSession', $env:PSMUX_TARGET_SESSION) }
+    & pwsh -NoProfile -File $restoreScript @restoreArgs
 }
