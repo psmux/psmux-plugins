@@ -10,7 +10,6 @@ $PSMUX = (Get-Command psmux -EA Stop).Source
 $psmuxDir = "$env:USERPROFILE\.psmux"
 $PLUGIN_DIR = Join-Path $PSScriptRoot "..\psmux-vim-navigator"
 $PLUGIN_PS1 = Join-Path $PLUGIN_DIR "psmux-vim-navigator.ps1"
-$POLL_SCRIPT = Join-Path $PLUGIN_DIR "scripts\poll-vim-state.ps1"
 $SESSION = "vimnav_test"
 $script:TestsPassed = 0
 $script:TestsFailed = 0
@@ -30,12 +29,6 @@ function Wait-Session {
 }
 
 function Cleanup {
-    $pollLock = Join-Path $env:USERPROFILE '.psmux\vim-navigator.pid'
-    if (Test-Path $pollLock) {
-        $p = (Get-Content $pollLock -Raw -EA SilentlyContinue).Trim()
-        if ($p -match '^\d+$') { try { Stop-Process -Id ([int]$p) -Force -EA SilentlyContinue } catch {} }
-        Remove-Item $pollLock -Force -EA SilentlyContinue
-    }
     & $PSMUX kill-session -t $SESSION 2>&1 | Out-Null
     Start-Sleep -Milliseconds 500
     Remove-Item "$psmuxDir\$SESSION.*" -Force -EA SilentlyContinue
@@ -50,10 +43,9 @@ Write-Host "Plugin dir: $PLUGIN_DIR"
 Write-Host "`n--- PART 1: File Structure ---" -ForegroundColor Cyan
 
 if (Test-Path $PLUGIN_PS1) { Write-Pass "psmux-vim-navigator.ps1 exists" } else { Write-Fail "psmux-vim-navigator.ps1 missing" }
-if (Test-Path $POLL_SCRIPT) { Write-Pass "scripts/poll-vim-state.ps1 exists" } else { Write-Fail "scripts/poll-vim-state.ps1 missing" }
 if (Test-Path (Join-Path $PLUGIN_DIR "README.md")) { Write-Pass "README.md exists" } else { Write-Fail "README.md missing" }
 
-foreach ($script in @($PLUGIN_PS1, $POLL_SCRIPT)) {
+foreach ($script in @($PLUGIN_PS1)) {
     if (-not (Test-Path $script)) { continue }
     $tokens = $null; $errors = $null
     $null = [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
@@ -63,13 +55,12 @@ foreach ($script in @($PLUGIN_PS1, $POLL_SCRIPT)) {
 }
 
 # No plugin.conf should be shipped -- PPM skips the .ps1 entry point entirely
-# when a plugin.conf is present, which would silently disable the background
-# poller this plugin depends on for vim-awareness.
+# when a plugin.conf is present, so the options above would never be read.
 $confPath = Join-Path $PLUGIN_DIR "plugin.conf"
 if (-not (Test-Path $confPath)) {
     Write-Pass "no plugin.conf shipped (required so PPM sources the .ps1 entry point)"
 } else {
-    Write-Fail "plugin.conf present -- PPM will skip psmux-vim-navigator.ps1 and the poller never starts"
+    Write-Fail "plugin.conf present -- PPM will skip psmux-vim-navigator.ps1"
 }
 
 # ===================================================================
@@ -91,11 +82,14 @@ Start-Sleep -Seconds 2
 $rootKeys = & $PSMUX list-keys -T root -t $SESSION 2>&1 | Out-String
 Write-Pass "plugin loads without error"
 
-if ($rootKeys -match 'C-h\s+select-pane\s+-L') { Write-Pass "root: C-h -> select-pane -L" } else { Write-Fail "root: C-h binding not found" }
-if ($rootKeys -match 'C-j\s+select-pane\s+-D') { Write-Pass "root: C-j -> select-pane -D" } else { Write-Fail "root: C-j binding not found" }
-if ($rootKeys -match 'C-k\s+select-pane\s+-U') { Write-Pass "root: C-k -> select-pane -U" } else { Write-Fail "root: C-k binding not found" }
-if ($rootKeys -match 'C-l\s+select-pane\s+-R') { Write-Pass "root: C-l -> select-pane -R" } else { Write-Fail "root: C-l binding not found" }
-if ($rootKeys -match [regex]::Escape('C-\') + '\s+select-pane\s+-l') { Write-Pass "root: C-\ -> select-pane -l (prev pane)" } else { Write-Fail "root: C-\ binding not found" }
+foreach ($b in @(@('C-h', '-L'), @('C-j', '-D'), @('C-k', '-U'), @('C-l', '-R'), @('C-\', '-l'))) {
+    $key = [regex]::Escape($b[0])
+    if ($rootKeys -match "$key\s+if-shell\s+-F\s+.*pane_current_command.*send-keys\s+$key.*select-pane\s+$($b[1])") {
+        Write-Pass "root: $($b[0]) -> if-shell vim ? send-keys : select-pane $($b[1])"
+    } else {
+        Write-Fail "root: $($b[0]) vim-aware binding not found"
+    }
+}
 
 $cmKeys = & $PSMUX list-keys -T copy-mode-vi -t $SESSION 2>&1 | Out-String
 if ($cmKeys -match 'C-h\s+select-pane\s+-L') { Write-Pass "copy-mode-vi: C-h -> select-pane -L" } else { Write-Fail "copy-mode-vi: C-h binding not found" }
@@ -103,21 +97,9 @@ if ($cmKeys -match 'C-h\s+select-pane\s+-L') { Write-Pass "copy-mode-vi: C-h -> 
 $prefixKeys = & $PSMUX list-keys -T prefix -t $SESSION 2>&1 | Out-String
 if ($prefixKeys -match 'C-l\s+send-keys\s+C-l') { Write-Pass "prefix: C-l -> send-keys C-l (clear-screen restored)" } else { Write-Fail "prefix: C-l clear-screen binding not found" }
 
-# Poller should have started and written a lock file (single-instance guard).
-$pollLock = Join-Path $env:USERPROFILE '.psmux\vim-navigator.pid'
-Start-Sleep -Seconds 1
-if (Test-Path $pollLock) {
-    $lockPid = (Get-Content $pollLock -Raw -EA SilentlyContinue).Trim()
-    $proc = Get-Process -Id ([int]$lockPid) -EA SilentlyContinue
-    if ($proc) { Write-Pass "background poller running (pid $lockPid)" }
-    else { Write-Fail "poller lock file present but process not running" }
-} else {
-    Write-Fail "poller lock file not created"
-}
-
 # ===================================================================
 # PART 3: Vim-detection format matching (deterministic, no keystroke
-# injection required -- exercises the exact regex the poller uses)
+# injection required -- exercises the exact regex the bindings use)
 # ===================================================================
 Write-Host "`n--- PART 3: Vim-Detection Pattern Matching ---" -ForegroundColor Cyan
 
@@ -142,14 +124,10 @@ if ($nvimCmd) {
     if ($cmd -match $vimPattern) { Write-Pass "vim-detect pattern matches 'nvim'" }
     else { Write-Fail "vim-detect pattern does not match 'nvim'" }
 
-    # Give the poller (default 250ms interval) time to notice and re-bind.
-    Start-Sleep -Seconds 1
-    $rootKeysAfterNvim = & $PSMUX list-keys -T root -t $SESSION 2>&1 | Out-String
-    if ($rootKeysAfterNvim -match 'C-h\s+send-keys\s+C-h') {
-        Write-Pass "poller re-bound C-h to send-keys while nvim is active (vim-aware passthrough armed)"
-    } else {
-        Write-Fail "poller did not re-bind C-h after nvim started"
-    }
+    $fmt = "#{m/r:$vimPattern,#{pane_current_command}}"
+    $isVim = (& $PSMUX display-message -t $SESSION -p $fmt 2>&1 | Out-String).Trim()
+    if ($isVim -eq '1') { Write-Pass "the bindings' condition is true while nvim runs" }
+    else { Write-Fail "the bindings' condition is '$isVim' while nvim runs" }
 
     & $PSMUX send-keys -t $SESSION Escape ":qa!" Enter 2>&1 | Out-Null
     Start-Sleep -Seconds 2
@@ -157,13 +135,9 @@ if ($nvimCmd) {
     if ($cmdAfterQuit -ne 'nvim') { Write-Pass "pane_current_command returns to shell ('$cmdAfterQuit') after :qa!" }
     else { Write-Fail "pane_current_command still reports nvim after :qa!" }
 
-    Start-Sleep -Seconds 1
-    $rootKeysAfterQuit = & $PSMUX list-keys -T root -t $SESSION 2>&1 | Out-String
-    if ($rootKeysAfterQuit -match 'C-h\s+select-pane\s+-L') {
-        Write-Pass "poller re-bound C-h back to select-pane after nvim exited"
-    } else {
-        Write-Fail "poller did not re-bind C-h back after nvim exited"
-    }
+    $isVim = (& $PSMUX display-message -t $SESSION -p $fmt 2>&1 | Out-String).Trim()
+    if ($isVim -eq '0') { Write-Pass "the bindings' condition is false after nvim exits" }
+    else { Write-Fail "the bindings' condition is '$isVim' after nvim exits" }
 } else {
     Write-Skip "nvim not found on PATH -- skipping live vim-detection dispatch tests (pattern matching itself is still exercised above)"
 }

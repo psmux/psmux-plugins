@@ -44,62 +44,25 @@ Inside psmux copy-mode, `Ctrl+h/j/k/l/\` always navigate panes directly
 (there's no vim process to defer to while you're already in psmux's own
 copy mode).
 
-## How vim-awareness works on psmux 3.3.6 (read this if something looks off)
+## How vim-awareness works
 
-Upstream vim-tmux-navigator binds each key directly to
-`if-shell -F '<vim-detect-pattern>' 'send-keys <key>' 'select-pane -<dir>'`,
-so tmux re-checks the condition on every keystroke. That exact mechanism
-was prototyped for this plugin and confirmed to *register* correctly on
-psmux 3.3.6, and the detection condition itself evaluates correctly on
-demand (`#{m/r:<pattern>,#{pane_current_command}}` reliably returns `nvim`
-for nvim panes, `vim` for vim panes, and the shell name for idle panes,
-thanks to the immediate-child `pane_current_command` fix in
-[psmux/psmux#299](https://github.com/psmux/psmux/issues/299), commit
-`b003802`) -- but the bound `if-shell`/`run-shell` command never actually
-fires its chosen branch when triggered by a *real keypress*. This was
-verified directly with `WriteConsoleInput` keystroke injection against an
-attached psmux client (not `send-keys`, which bypasses the key-dispatch
-path entirely and would have masked the bug).
+As upstream vim-tmux-navigator does, each key is bound to
+`if-shell -F '#{m/r:<vim-detect-pattern>,#{pane_current_command}}' 'send-keys <key>' 'select-pane -<dir>'`,
+so the server checks the pane that receives the key on every keystroke, in
+every session, with no lag after vim starts or exits. Verified with real
+keypresses on psmux 3.4.0.
 
-Root cause, found in the psmux source
-(`src/commands.rs`, the `"if-shell" | "if"` and `"run-shell" | "run"` match
-arms inside `execute_command_string`): whenever the invoking client has
-`app.control_port` set -- true for essentially every attached session --
-the command is forwarded to the server's control port via
-`send_control_to_port(...)` and the result is discarded (`let _ = ...`).
-The fully correct local-evaluation branch (parse the condition, run the
-format/shell test, dispatch the chosen command) exists right below it, but
-is dead code in practice because `control_port` is always set for a normal
-attached client. `confirm-before`, by contrast, is handled entirely
-locally (it just sets `app.mode` directly) and dispatches correctly on
-every real keypress, which is what confirmed this is specific to the
-if-shell/run-shell forwarding path rather than root-table dispatch or
-compound commands in general.
+Earlier versions of this plugin rebound the keys from a background poller
+(`scripts/poll-vim-state.ps1`), because psmux 3.3.6 dropped a key-bound
+`if-shell` on a real keypress. The poller asked one session for its active
+pane, so in every other session the keys stayed `select-pane` and never
+reached vim. Loading this version stops a poller an earlier version left
+running.
 
-**Until that's fixed upstream**, this plugin uses a different, verified
-mechanism to get the same end-user behavior: `scripts/poll-vim-state.ps1`
-runs as a lightweight background process that watches
-`#{pane_current_command}` for the active pane and re-binds the direction
-keys between two plain, non-conditional commands (`select-pane -<dir>` /
-`send-keys <key>`), which *do* dispatch correctly on every real keypress.
-This was proven end-to-end with real `WriteConsoleInput` injection: typing
-`Ctrl+h` while nvim is running and in insert mode with placeholder text
-correctly triggers nvim's own backspace (the keystroke reaches vim), and
-typing `Ctrl+h` from a plain shell pane correctly switches panes.
-
-The trade-off is a small, bounded lag (one poll interval, default 250ms)
-right after vim/nvim starts or exits in the active pane, during which a
-navigation key might still do the "old" behavior. Once psmux's `if-shell`
-key-binding dispatch is fixed, this plugin can go back to the simpler,
-zero-lag upstream mechanism.
-
-**Known limitation:** because the poller re-binds a single, server-wide
-root-table key rather than evaluating per-keystroke in each client's own
-context, this only tracks one active pane's vim state at a time. If you
-have multiple clients attached simultaneously to different panes with
-different vim states, they will all currently share whichever pane's state
-the poller last observed. This is a corollary of the same core limitation,
-not a separate bug.
+**Known limitation:** `#{pane_current_command}` names the deepest process
+under the pane. A vim that runs child processes of its own (Neovim with
+plugins starting `git` or a language server) can be reported as that child,
+and the key then switches panes instead of reaching vim.
 
 ## Options
 
@@ -111,7 +74,6 @@ set -g @vim_navigator_mapping_right  'C-l'
 set -g @vim_navigator_mapping_prev   'C-\'
 set -g @vim_navigator_prefix_mapping_clear_screen 'C-l'
 set -g @vim_navigator_pattern '(^|/)g?(view|l?n?vim?x?|fzf)(diff)?(\.exe)?$'
-set -g @vim_navigator_poll_interval_ms '250'
 ```
 
 ## License

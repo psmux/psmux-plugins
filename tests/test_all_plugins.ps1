@@ -122,8 +122,8 @@ foreach ($plugin in ($plugins + $themes)) {
 }
 
 # psmux-vim-navigator ships only a .ps1 entry point (no plugin.conf) since it
-# needs to launch a background poller process -- checked separately from the
-# $plugins array above, which assumes a plugin.conf.
+# reads its options before binding -- checked separately from the $plugins
+# array above, which assumes a plugin.conf.
 Check "psmux-vim-navigator.ps1 exists" (Test-Path (Join-Path $PLUGIN_DIR 'psmux-vim-navigator\psmux-vim-navigator.ps1'))
 
 # Check scripts/ directories for plugins that reference them
@@ -135,7 +135,6 @@ $scriptChecks = @{
     'psmux-cpu' = @('scripts/system_stats.ps1', 'scripts/cpu_info.ps1')
     'psmux-logging' = @('scripts/toggle_logging.ps1', 'scripts/capture_screen.ps1', 'scripts/capture_history.ps1')
     'psmux-sidebar' = @('scripts/toggle_sidebar.ps1')
-    'psmux-vim-navigator' = @('scripts/poll-vim-state.ps1')
 }
 
 foreach ($plugin in $scriptChecks.Keys) {
