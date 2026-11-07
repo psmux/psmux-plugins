@@ -529,7 +529,7 @@ function Install-AllPlugins {
 
     $installed = 0
     foreach ($spec in $plugins) {
-        $name = ($spec -split '/')[-1]
+        $name = (Resolve-PluginSpec $spec).Name
         Show-PpmStatus "PPM: Installing $name..."
         if (Install-Plugin $spec) { $installed++ }
     }
@@ -550,7 +550,7 @@ function Update-AllPlugins {
     $declaredPlugins = Get-DeclaredPlugins
     $specByName = @{}
     foreach ($spec in $declaredPlugins) {
-        $pname = ($spec -split '/')[-1]
+        $pname = (Resolve-PluginSpec $spec).Name
         $specByName[$pname] = $spec
     }
 
@@ -579,7 +579,7 @@ function Update-AllPlugins {
 # --- Main: Clean unused plugins ---
 function Remove-UnusedPlugins {
     $plugins = Get-DeclaredPlugins
-    $declaredNames = $plugins | ForEach-Object { ($_ -split '/')[-1] }
+    $declaredNames = $plugins | ForEach-Object { (Resolve-PluginSpec $_).Name }
 
     Show-PpmStatus "PPM: Cleaning unused plugins..."
     Write-Host ""
@@ -644,7 +644,7 @@ Register-PPMBindings
 
 # Source only plugins that are declared in config (not every directory)
 $declaredPlugins = Get-DeclaredPlugins
-$declaredNames = $declaredPlugins | ForEach-Object { ($_ -split '/')[-1] }
+$declaredNames = $declaredPlugins | ForEach-Object { (Resolve-PluginSpec $_).Name }
 
 $installedPlugins = Get-ChildItem -Path $PLUGIN_DIR -Directory -ErrorAction SilentlyContinue |
                     Where-Object { $_.Name -ne 'ppm' -and $_.Name -in $declaredNames }
