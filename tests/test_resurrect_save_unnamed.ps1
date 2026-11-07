@@ -150,8 +150,8 @@ try {
     Check "restore: the collapsed line names the sessions" ($skipLines[0] -match '\b0\b' -and $skipLines[0] -match '\bwork\b') "Line: $($skipLines[0])"
     Check "restore: tells the user how to attach or overwrite" ($out -match 'psmux attach -t' -and $out -match '@resurrect-overwrite') "Output: $out"
     Check "restore: header names the save file" ($out -match 'restoring 3 sessions from psmux_resurrect_') "Output: $out"
-    $status = (& $PSMUX show-options -gv '@resurrect-status' 2>&1 | Out-String).Trim()
-    Check "restore: status option cleared after summary" (-not $status -or $status -match 'unknown option|not found|error') "Status: $status"
+    $options = (& $PSMUX show-options -g 2>&1 | Out-String)
+    Check "restore: status option cleared after summary" ($LASTEXITCODE -eq 0 -and $options -notmatch '(?m)^@resurrect-status(?:\s|$)') "Options: $options"
 
     # --- the #37 loop: cold restore must not bring the untouched 0 back ---
     Write-Host "`n--- cold restore after kill-server (auto) ---" -ForegroundColor Yellow
