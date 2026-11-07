@@ -31,7 +31,7 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 
 ## What Gets Restored
 
-- All sessions (idempotent by default: a session that is still running is kept, and only the saved windows it is missing are added to it; see `@resurrect-overwrite` below)
+- All sessions (existing windows are kept and missing saved windows are added; see [Automatic startup](#automatic-startup) for the initial-pane exception and `@resurrect-overwrite` below)
 - Windows with correct names
 - Panes in correct working directories
 - Exact layout geometry via `select-layout` replay
@@ -45,6 +45,23 @@ A Windows-user-wide mutex allows one restore at a time, across sessions and
 terminal windows. Overlapping requests report that a restore is in progress and
 skip successfully. Windows releases the mutex if the process exits or crashes;
 this does not roll back an interrupted restore.
+
+### Automatic startup
+
+With `@continuum-restore 'on'`, Continuum restores a newly created session's
+sole initial pane if the save contains that session name and window index. This
+lets `psmux new-session -A -s main` restore the first window as well as the rest
+of the saved environment. Attaching to an existing session does not trigger
+startup restore.
+
+Automatic restore owns that initial pane until it finishes. Work started there
+before restore completes can be replaced. Manual restores preserve existing
+windows, and automatic restore preserves existing windows in other sessions,
+unless `@resurrect-overwrite 'on'` is set.
+
+Starting two different saved sessions simultaneously can leave one initial
+pane unrestored. Let startup restore finish before starting another named
+session.
 
 ## Options
 
@@ -73,10 +90,9 @@ set -g @resurrect-processes ':all:'
 set -g @resurrect-processes '"~rails server" "~npm start"'
 
 # Overwrite sessions that are already running instead of keeping them.
-# Default is off: a running session is kept, its existing windows are not
-# touched, and saved windows it no longer has (matched by window index, as
-# tmux-resurrect does) are added to it. When 'on', the running session is
-# killed and fully recreated from the save.
+# Default is off: keep running sessions and add missing saved windows,
+# matched by window index. See Automatic startup for the initial-pane exception.
+# When 'on', the running session is killed and fully recreated from the save.
 set -g @resurrect-overwrite 'on'
 
 # What to do with auto-named sessions (the 0, 1, 2 a bare `psmux` creates).

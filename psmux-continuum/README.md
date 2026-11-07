@@ -33,7 +33,7 @@ set -g @continuum-boot 'on'
 ## How It Works
 
 - Uses a PowerShell background job to periodically call psmux-resurrect's save
-- On server start, checks for the last save file and restores if enabled
+- On server start, checks for the last save file and restores if enabled. See [Automatic startup](../psmux-resurrect/README.md#automatic-startup).
 - Boot feature uses Windows Scheduled Tasks (no registry hacking)
 
 ## License
