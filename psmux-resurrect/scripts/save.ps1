@@ -91,143 +91,175 @@ function Test-UntouchedSession($sessionData) {
     return ($idleShells -contains $base.ToLowerInvariant())
 }
 
-$skippedSessions = @()
-
-# Get all session names using format flag for clean parsing (retry on empty)
-$sessionLines = ''
-for ($retry = 0; $retry -lt 5; $retry++) {
-    $sessionLines = (& $PSMUX list-sessions -F '#{session_name}' 2>&1) | Out-String
-    if ($sessionLines.Trim()) { break }
-    Start-Sleep -Milliseconds 500
+function Get-PaneListing([string]$sessionName, [string]$format) {
+    # Read raw UTF-8 stdout: PowerShell's native line handling can remove CR
+    # or supply a newline that conceals a truncated escape sequence.
+    $arguments = @('list-panes', '-s', '-t', $sessionName, '-F', $format)
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $PSMUX
+    if ([IO.Path]::GetExtension($PSMUX) -eq '.ps1') {
+        $startInfo.FileName = (Get-Command pwsh -CommandType Application -ErrorAction Stop).Source
+        $literals = @($PSMUX) + $arguments | ForEach-Object {
+            "'{0}'" -f [Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($_)
+        }
+        $invocation = '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); & ' + ($literals -join ' ')
+        $arguments = @('-NoProfile', '-Command', $invocation)
+    }
+    foreach ($argument in $arguments) { $startInfo.ArgumentList.Add($argument) }
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $startInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        [void]$process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $text = $stdout.GetAwaiter().GetResult()
+        $errorText = $stderr.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0 -or -not $text.Trim()) {
+            throw "list-panes for '$sessionName' failed or returned no panes: $text$errorText"
+        }
+        return $text
+    } finally { $process.Dispose() }
 }
-foreach ($line in ($sessionLines -split "`n")) {
-    $sessionName = $line.Trim()
-    if ([string]::IsNullOrWhiteSpace($sessionName)) { continue }
 
-    # Cheap name-based exclusions first, before any per-window queries.
-    if ($sessionName.StartsWith('__')) {
-        $skippedSessions += "$sessionName (internal)"
-        continue
+function Read-CaptureRows([string]$listing) {
+    # Decode #{q:...} before treating unescaped tabs and LF as separators.
+    # psmux emits LF records; its q modifier does not escape CR, so reject CR.
+    $field = [Text.StringBuilder]::new()
+    $fields = [Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $listing.Length; $i++) {
+        $ch = $listing[$i]
+        if ($ch -eq '\') {
+            if (++$i -eq $listing.Length) { throw 'Incomplete quoted pane data.' }
+            if ($listing[$i] -eq "`r") { throw 'Carriage return in quoted pane data.' }
+            [void]$field.Append($listing[$i])
+        } elseif ($ch -eq "`t" -or $ch -eq "`n") {
+            $fields.Add($field.ToString())
+            [void]$field.Clear()
+            if ($ch -eq "`n") {
+                if ($fields.Count -gt 1 -or $fields[0]) { @{ Fields = $fields.ToArray() } }
+                $fields.Clear()
+            }
+        } elseif ($ch -eq "`r") {
+            throw 'Unescaped carriage return in pane data.'
+        } else { [void]$field.Append($ch) }
     }
-    $isAutoNamed = Test-AutoNamedSession $sessionName
-    if ($isAutoNamed -and $saveUnnamed -eq 'off') {
-        $skippedSessions += "$sessionName (unnamed)"
-        continue
+    if ($field.Length -gt 0 -or $fields.Count -gt 0) { throw 'Unterminated pane record.' }
+}
+
+function Get-EnvironmentCapture {
+    $sessions = @()
+    $skipped = @()
+    $commands = @()
+    $sessionLines = (& $PSMUX list-sessions -F '#{session_name}' 2>&1) | Out-String
+    if ($LASTEXITCODE -ne 0 -or -not $sessionLines.Trim()) {
+        throw "list-sessions failed or returned no sessions: $($sessionLines.Trim())"
     }
 
-    $sessionData = @{
-        name    = $sessionName
-        windows = @()
-    }
-    $saveCommands = @()
-
-    # Get windows: index, name, active, layout, zoomed flag, flags
-    $winFmt = '#{window_index}|#{window_name}|#{window_active}|#{window_layout}|#{window_zoomed_flag}|#{window_flags}'
-    $windowLines = (& $PSMUX list-windows -t $sessionName -F $winFmt 2>&1) | Out-String
-    foreach ($wline in ($windowLines -split "`n")) {
-        $wline = $wline.Trim()
-        if ([string]::IsNullOrWhiteSpace($wline)) { continue }
-
-        $parts = $wline -split '\|', 6
-        if ($parts.Count -lt 4) { continue }
-
-        $winIndex  = $parts[0]
-        $winName   = $parts[1]
-        $winActive = $parts[2]
-        $winLayout = $parts[3]
-        $winZoomed = if ($parts.Count -ge 5) { $parts[4] } else { '0' }
-        $winFlags  = if ($parts.Count -ge 6) { $parts[5] } else { '' }
-
-        $windowData = @{
-            index  = [int]$winIndex
-            name   = $winName
-            layout = $winLayout
-            active = ($winActive -eq '1')
-            zoomed = ($winZoomed -eq '1')
-            flags  = $winFlags
-            panes  = @()
+    # Quoting keeps user text from introducing field or record separators.
+    $paneFmt = (@(
+        'window_index', 'window_name', 'window_active', 'window_layout',
+        'window_zoomed_flag', 'window_flags', 'pane_index', 'pane_current_path',
+        'pane_active', 'pane_title', 'pane_pid', 'pane_current_command'
+    ) | ForEach-Object { '#{{q:{0}}}' -f $_ }) -join "`t"
+    foreach ($line in ($sessionLines -split "`r?`n")) {
+        $sessionName = $line.Trim()
+        if (-not $sessionName) { continue }
+        if ($sessionName.StartsWith('__')) {
+            $skipped += "$sessionName (internal)"
+            continue
+        }
+        $isAutoNamed = Test-AutoNamedSession $sessionName
+        if ($isAutoNamed -and $saveUnnamed -eq 'off') {
+            $skipped += "$sessionName (unnamed)"
+            continue
         }
 
-        # Get panes: index, path, active, title, current_command, pid
-        $paneFmt = '#{pane_index}|#{pane_current_path}|#{pane_active}|#{pane_title}|#{pane_current_command}|#{pane_pid}'
-        $paneLines = (& $PSMUX list-panes -t "${sessionName}:${winIndex}" -F $paneFmt 2>&1) | Out-String
-        foreach ($pline in ($paneLines -split "`n")) {
-            $pline = $pline.Trim()
-            if ([string]::IsNullOrWhiteSpace($pline)) { continue }
-
-            $pParts = $pline -split '\|', 6
-            $paneIdx  = if ($pParts.Count -ge 1) { [int]$pParts[0] } else { 0 }
-            $paneDir  = if ($pParts.Count -ge 2 -and $pParts[1]) { $pParts[1] } else { $env:USERPROFILE }
-            $paneAct  = if ($pParts.Count -ge 3) { $pParts[2] } else { '0' }
-            $paneTtl  = if ($pParts.Count -ge 4) { $pParts[3] } else { '' }
-            $paneCmd  = if ($pParts.Count -ge 5) { $pParts[4] } else { '' }
-            $panePid  = if ($pParts.Count -ge 6) { $pParts[5] } else { '' }
-
-            $paneData = @{
-                index     = $paneIdx
-                directory = $paneDir
-                active    = ($paneAct -eq '1')
-                title     = $paneTtl
-                command   = $paneCmd
+        $paneLines = Get-PaneListing $sessionName $paneFmt
+        $sessionData = @{ name = $sessionName; windows = @() }
+        $windows = @{}
+        $sessionCommands = @()
+        foreach ($row in (Read-CaptureRows $paneLines)) {
+            $parts = $row.Fields
+            $winIndex = 0; $paneIndex = 0
+            if ($parts.Count -ne 12 -or
+                -not [int]::TryParse($parts[0], [ref]$winIndex) -or $winIndex -lt 0 -or
+                -not [int]::TryParse($parts[6], [ref]$paneIndex) -or $paneIndex -lt 0 -or
+                $parts[2] -notmatch '^[01]$' -or $parts[4] -notmatch '^[01]$' -or
+                $parts[8] -notmatch '^[01]$' -or -not $parts[3] -or
+                $parts[10] -notmatch '^\d*$') {
+                throw "Invalid pane data for '$sessionName'."
             }
-
-            # Capture pane contents if enabled
-            if ($captureEnabled) {
-                $paneTarget = "${sessionName}:${winIndex}.${paneIdx}"
-                $paneContent = (& $PSMUX capture-pane -t $paneTarget -p 2>&1 | Out-String)
-                if ($paneContent) {
-                    $paneData['content'] = $paneContent
+            if (-not $windows.ContainsKey($winIndex)) {
+                $windows[$winIndex] = @{
+                    index = $winIndex; name = $parts[1]; active = ($parts[2] -eq '1')
+                    layout = $parts[3]; zoomed = ($parts[4] -eq '1'); flags = $parts[5]; panes = @()
                 }
+                $sessionData.windows += $windows[$winIndex]
             }
-
-            $windowData.panes += $paneData
-            $saveCommands += @{ Pane = $paneData; Pid = $panePid }
+            $paneData = @{
+                index = $paneIndex
+                directory = if ($parts[7]) { $parts[7] } else { $env:USERPROFILE }
+                active = ($parts[8] -eq '1'); title = $parts[9]; command = $parts[11]
+            }
+            $windows[$winIndex].panes += $paneData
+            $sessionCommands += @{ Pane = $paneData; Pid = $parts[10]; Target = "${sessionName}:${winIndex}.${paneIndex}" }
         }
-
-        $sessionData.windows += $windowData
+        if ($isAutoNamed -and $saveUnnamed -eq 'auto' -and (Test-UntouchedSession $sessionData)) {
+            $skipped += "$sessionName (unnamed, untouched)"
+            continue
+        }
+        $sessions += $sessionData
+        $commands += $sessionCommands
     }
+    return @{ Sessions = $sessions; Skipped = $skipped; Commands = $commands }
+}
 
-    # The shape check needs the windows and panes gathered above.
-    if ($isAutoNamed -and $saveUnnamed -eq 'auto' -and (Test-UntouchedSession $sessionData)) {
-        $skippedSessions += "$sessionName (unnamed, untouched)"
-        continue
+$capture = $null
+$retryDelays = @(2, 4, 6)
+for ($attempt = 0; $attempt -le $retryDelays.Count; $attempt++) {
+    try {
+        $capture = Get-EnvironmentCapture
+        break
+    } catch {
+        $captureError = $_.Exception.Message
+        if ($attempt -eq $retryDelays.Count) {
+            Write-Host "psmux-resurrect: Save failed after 4 attempts; previous snapshot preserved. $captureError" -ForegroundColor Yellow
+            exit 1
+        }
+        Write-Host "psmux-resurrect: Capture failed, retrying in $($retryDelays[$attempt]) seconds. $captureError" -ForegroundColor DarkGray
+        Start-Sleep -Seconds $retryDelays[$attempt]
     }
+}
+$env_data.sessions = $capture.Sessions
+$skippedSessions = $capture.Skipped
 
-    # Filter using the live commands before strategies rewrite them. Only panes
-    # included in the snapshot run a strategy; their PIDs are not persisted.
-    foreach ($entry in $saveCommands) {
-        $pane = $entry.Pane
-        $pane.command = Get-SaveCommand -PaneCommand $pane.command -PanePid $entry.Pid `
-            -Directory $pane.directory -PsmuxBin $PSMUX -PluginDir $PLUGIN_DIR
+# Strategies run only for included panes after the complete capture succeeds.
+# Their failures preserve the original command and do not retry the capture.
+foreach ($entry in $capture.Commands) {
+    $pane = $entry.Pane
+    $pane.command = Get-SaveCommand -PaneCommand $pane.command -PanePid $entry.Pid `
+        -Directory $pane.directory -PsmuxBin $PSMUX -PluginDir $PLUGIN_DIR
+    if ($captureEnabled) {
+        $paneContent = (& $PSMUX capture-pane -t $entry.Target -p 2>&1 | Out-String)
+        if ($LASTEXITCODE -eq 0 -and $paneContent) { $pane['content'] = $paneContent }
     }
-    $env_data.sessions += $sessionData
 }
 
 if ($skippedSessions.Count -gt 0) {
     Write-Host "psmux-resurrect: not saving $($skippedSessions -join ', ')" -ForegroundColor DarkGray
 }
 
-# Guard: never persist a 0-session snapshot.
-# psmux returns exit 0 with empty output when no server is running (which is also why the
-# capture loop above retries on empty), so a 0-session capture almost always means "the
-# server is down", not "the user has no sessions" -- tmux/psmux tears the server down when
-# its last session goes. Writing it would create a useless restore point AND repoint 'last'
-# to it; the 20-slot rotation then evicts the good snapshots, silently destroying the
-# ability to resurrect. We bail here -- after the capture loop but before dedup, the write
-# and the 'last' repoint -- so an empty capture has no side effects.
-# (Known limitation: a PARTIAL capture -- a session reported mid-startup with incomplete
-# windows/panes -- has >=1 session, so it passes this guard and is still written. Closing
-# that needs an expected-session-count signal we don't have here; tracked as a follow-up.)
+# Preserve the previous snapshot when policy excludes every running session.
 if (@($env_data.sessions).Count -eq 0) {
-    if ($skippedSessions.Count -gt 0) {
-        # Sessions exist but every one of them was filtered out above. Say so
-        # explicitly: this is the unnamed policy at work, not a dead server.
-        & $PSMUX display-message "Nothing to save: only unnamed or internal sessions are running (see @resurrect-save-unnamed)." 2>&1 | Out-Null
-        Write-Host "psmux-resurrect: nothing to save, every running session was skipped (set @resurrect-save-unnamed 'on' to keep unnamed sessions)." -ForegroundColor Yellow
-        exit 0
-    }
-    & $PSMUX display-message "No sessions to save, skipping." 2>&1 | Out-Null
-    Write-Host "psmux-resurrect: No sessions captured, skipping save (server likely down)." -ForegroundColor Yellow
+    & $PSMUX display-message "Nothing to save: only unnamed or internal sessions are running (see @resurrect-save-unnamed)." 2>&1 | Out-Null
+    Write-Host "psmux-resurrect: nothing to save, every running session was skipped (set @resurrect-save-unnamed 'on' to keep unnamed sessions)." -ForegroundColor Yellow
     exit 0
 }
 

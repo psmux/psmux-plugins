@@ -29,6 +29,17 @@ set -g @plugin 'psmux-plugins/psmux-resurrect'
 - Window flags
 - Pane contents (optional)
 
+### Capture failures
+
+Save captures each session's windows and panes in one query. A failed or empty
+structural query, or malformed pane data, retries the complete capture after
+2, 4 and 6 seconds. If all four attempts fail, save exits with an error and
+leaves existing snapshots and `last` unchanged. Sessions excluded by the unnamed
+or internal-session policy do not trigger retries.
+
+Save-command strategies run after the structural capture succeeds. Failed
+optional pane-content queries omit that pane's contents without retrying.
+
 ## What Gets Restored
 
 - All sessions (existing windows are kept and missing saved windows are added; see [Automatic startup](#automatic-startup) for the initial-pane exception and `@resurrect-overwrite` below)

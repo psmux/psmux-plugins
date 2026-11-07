@@ -19,11 +19,14 @@ switch ($args[0]) {
         exit 0
     }
     'list-sessions' { 'work'; '0'; '1'; '__warm__'; exit 0 }
-    'list-windows' { '0|main|1|c2be,80x24,0,0,1|0|'; exit 0 }
+    'list-windows' { throw 'Window metadata comes from list-panes -s.' }
     'list-panes' {
-        $withPid = $args[-1].Contains('#{pane_pid}')
-        "0|$env:USERPROFILE|1|shell|pwsh$(if ($withPid) { '|4567' })"
-        if ($args -contains '1:0') { "1|$env:USERPROFILE|0|second|pwsh$(if ($withPid) { '|4568' })" }
+        $row = (@(0, 'main', 1, 'c2be,80x24,0,0,1', 0, '', 0, $env:USERPROFILE, 1, 'shell', 4567, 'pwsh') | ForEach-Object { ([string]$_).Replace('\', '\\') }) -join "`t"
+        [Console]::Write($row + "`n")
+        if ($args -contains '1') {
+            $row = (@(0, 'main', 1, 'c2be,80x24,0,0,1', 0, '', 1, $env:USERPROFILE, 0, 'second', 4568, 'pwsh') | ForEach-Object { ([string]$_).Replace('\', '\\') }) -join "`t"
+            [Console]::Write($row + "`n")
+        }
         exit 0
     }
     default { exit 0 }

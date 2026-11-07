@@ -38,20 +38,20 @@ $PSMUX = (Get-Command psmux -ErrorAction Stop).Source
 Write-Host "`n=== psmux-resurrect @resurrect-save-unnamed test (isolated server) ===" -ForegroundColor Magenta
 
 $sandbox = Join-Path ([IO.Path]::GetTempPath()) ("psmux-unnamed-{0}" -f ([guid]::NewGuid().ToString('N')))
-$home    = Join-Path $sandbox 'home'
+$homeDir = Join-Path $sandbox 'home'
 $data    = Join-Path $sandbox 'data'
-New-Item -ItemType Directory -Path (Join-Path $home '.psmux\resurrect'), $data -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $homeDir '.psmux\resurrect'), $data -Force | Out-Null
 
 $savedUserProfile = $env:USERPROFILE
 $savedDataDir     = $env:PSMUX_DATA_DIR
-$env:USERPROFILE     = $home
+$env:USERPROFILE     = $homeDir
 $env:PSMUX_DATA_DIR  = $data
 $env:PSMUX_ALLOW_NESTING = '1'
 foreach ($v in 'PSMUX_SESSION', 'PSMUX_SESSION_NAME', 'PSMUX_TARGET_SESSION', 'TMUX', 'TMUX_PANE') {
     Remove-Item "Env:$v" -ErrorAction SilentlyContinue
 }
 
-$lastFile = Join-Path $home '.psmux\resurrect\last'
+$lastFile = Join-Path $homeDir '.psmux\resurrect\last'
 
 function Wait-Session([string]$name) {
     for ($i = 0; $i -lt 40; $i++) {
@@ -71,7 +71,7 @@ function Get-SavedNames {
     return @((Get-Content $f -Raw | ConvertFrom-Json).sessions.name)
 }
 function Reset-Saves {
-    Remove-Item (Join-Path $home '.psmux\resurrect\*') -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $homeDir '.psmux\resurrect\*') -Force -ErrorAction SilentlyContinue
 }
 
 try {

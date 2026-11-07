@@ -34,8 +34,27 @@ set -g @resurrect-processes '~Set-Content'
 '@ | Set-Content $config
 $wrapper = Join-Path $bin 'psmux.ps1'
 @"
-& '$($realPsmux.Replace("'", "''"))' -L '$namespace' -f '$($config.Replace("'", "''"))' @args
-exit `$LASTEXITCODE
+`$info = [Diagnostics.ProcessStartInfo]::new()
+`$info.FileName = '$($realPsmux.Replace("'", "''"))'
+foreach (`$argument in (@('-L', '$namespace', '-f', '$($config.Replace("'", "''"))') + `$args)) { `$info.ArgumentList.Add(`$argument) }
+`$info.UseShellExecute = `$false
+`$info.RedirectStandardOutput = `$true
+`$info.RedirectStandardError = `$true
+`$info.StandardOutputEncoding = [Text.UTF8Encoding]::new(`$false)
+`$process = [Diagnostics.Process]::new()
+`$process.StartInfo = `$info
+try {
+    [void]`$process.Start()
+    `$stdout = `$process.StandardOutput.ReadToEndAsync()
+    `$stderr = `$process.StandardError.ReadToEndAsync()
+    `$process.WaitForExit()
+    `$text = `$stdout.GetAwaiter().GetResult()
+    if (`$args[0] -eq 'list-panes' -and `$args -contains '-s') { [Console]::Write(`$text) }
+    elseif (`$text) { `$text.TrimEnd([char[]]"``r``n") -split "``r?``n" }
+    [Console]::Error.Write(`$stderr.GetAwaiter().GetResult())
+    `$code = `$process.ExitCode
+} finally { `$process.Dispose() }
+exit `$code
 "@ | Set-Content $wrapper
 @'
 param([string]$Command, [string]$PanePid, [string]$Directory)
