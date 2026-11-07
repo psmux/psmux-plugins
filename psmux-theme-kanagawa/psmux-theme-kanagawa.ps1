@@ -17,6 +17,8 @@
 #   set -g @kanagawa-show-pane-count 'on'
 # =============================================================================
 
+param([switch]$IfConfigured)
+
 $ErrorActionPreference = 'Continue'
 
 function Get-PsmuxBin {
@@ -28,6 +30,13 @@ function Get-PsmuxBin {
 }
 
 $PSMUX = Get-PsmuxBin
+
+# plugin.conf runs this script with -IfConfigured after applying its static
+# look. Take over only when the user has set one of this theme's options.
+if ($IfConfigured) {
+    $configured = (& $PSMUX show-options -g 2>&1 | Out-String) -split "`r?`n" | Where-Object { $_ -like '@kanagawa-*' }
+    if (-not $configured) { exit 0 }
+}
 
 function Get-Opt {
     param([string]$Name, [string]$Default)
