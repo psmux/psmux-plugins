@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      PSMUX_VERSION: v3.4.0
+      # The runner is thrown away afterwards, which the startup test requires.
+      PSMUX_DISPOSABLE_TEST: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install psmux
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'psmux'
+          gh release download $env:PSMUX_VERSION -R psmux/psmux -p "psmux-$env:PSMUX_VERSION-windows-x64.zip" -D $env:RUNNER_TEMP
+          Expand-Archive (Join-Path $env:RUNNER_TEMP "psmux-$env:PSMUX_VERSION-windows-x64.zip") $dir
+          $exe = Get-ChildItem $dir -Recurse -Filter psmux.exe | Select-Object -First 1
+          $exe.DirectoryName | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          & $exe.FullName -V
+
+      - name: Parse every PowerShell script
+        shell: pwsh
+        run: |
+          $bad = 0
+          Get-ChildItem -Recurse -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]_trash[\\/]' } | ForEach-Object {
+            $errors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors.Count) { $bad++; Write-Host "::error file=$($_.FullName)::$($errors[0].Message)" }
+          }
+          if ($bad) { exit 1 }
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $failed = @()
+          foreach ($t in Get-ChildItem tests -Filter 'test_*.ps1' | Sort-Object Name) {
+            Write-Host "::group::$($t.Name)"
+            pwsh -NoProfile -File $t.FullName
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
+            if ($code -ne 0) { $failed += "$($t.Name) (exit $code)"; Write-Host "::error::$($t.Name) failed with exit $code" }
+          }
+          if ($failed) { Write-Host "Failed: $($failed -join ', ')"; exit 1 }
