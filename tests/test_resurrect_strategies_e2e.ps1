@@ -123,7 +123,8 @@ Start-Sleep 1
 function ensure-session {
     param([string]$name)
     for ($i = 0; $i -lt 5; $i++) {
-        w new-session -d -s $name -c $env:USERPROFILE 2>&1 | Out-Null
+        # Call directly: w binds -d as PowerShell's -Debug common parameter.
+        & $wrapperPath new-session -d -s $name -c $env:USERPROFILE 2>&1 | Out-Null
         Start-Sleep 2
         $listed = (w list-sessions -F '#{session_name}' 2>&1 | Out-String).Trim() -split "`r?`n"
         if ($listed -contains $name) { return $true }
