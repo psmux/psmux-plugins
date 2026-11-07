@@ -4,10 +4,8 @@
 # Validates Get-StrategyCommand in scripts/strategy.ps1 against the
 # tmux-resurrect strategy contract: <program>_<strategy>.ps1 lookup, user-dir
 # precedence over plugin-dir fallback, fallback-to-original on failure.
-# Needs a running psmux server: the strategy name is read back through
-# show-options, so with no server every lookup falls back to the original
-# command and the invocation phases fail. Start one first, e.g.
-#   psmux new-session -d -s strategy_keepalive
+# The strategy name is read back through show-options, so the test starts its
+# own server in the sandbox home (see _sandbox.ps1) before the lookups.
 # =============================================================================
 $ErrorActionPreference = 'Continue'
 
@@ -37,6 +35,13 @@ foreach ($n in @('psmux', 'pmux', 'tmux')) {
 if (-not $PSMUX) {
     Write-Host "FATAL: psmux binary not found!" -ForegroundColor Red
     Exit-TestSandbox; exit 1
+}
+
+& $PSMUX new-session -d -s strategy_keepalive 2>&1 | Out-Null
+for ($i = 0; $i -lt 40; $i++) {
+    & $PSMUX has-session -t strategy_keepalive 2>$null
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Milliseconds 250
 }
 
 $PLUGIN_ROOT = Split-Path $PSScriptRoot -Parent

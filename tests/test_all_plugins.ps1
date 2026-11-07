@@ -69,7 +69,10 @@ foreach ($plugin in ($plugins + $themes)) {
         $content = Get-Content $confPath -Raw -ErrorAction SilentlyContinue
         
         # Check for bash-isms that shouldn't be in psmux conf
-        $hasBashisms = $content -match '#!/bin/bash|#!/usr/bin/env bash|\$\(|`[^"'']'
+        # Comments may quote shell syntax (sensible's header shows a backticked
+        # @plugin line), so only look for $( and backticks in config lines.
+        $code = ($content -split "`r?`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+        $hasBashisms = ($content -match '#!/bin/bash|#!/usr/bin/env bash') -or ($code -match '\$\(|`[^"'']')
         Check "${plugin}: no bash-isms" (-not $hasBashisms) $(if($hasBashisms){"Found bash syntax"})
         
         # Check for unix-only paths
