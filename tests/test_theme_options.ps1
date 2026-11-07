@@ -86,6 +86,10 @@ try {
     }
 
     $pid8 = $PID % 100000
+    # psmux's own bar, from a server with no theme, to tell when a script has run.
+    Start-Themed "thm-plain-$pid8" '# no theme'
+    $default = Read-Bar "thm-plain-$pid8"
+    Stop-Themed "thm-plain-$pid8"
     foreach ($t in $all) {
         $name = $t.Name
         $opt = '@' + ($name -replace '^psmux-theme-', '')
@@ -96,11 +100,13 @@ try {
 
         $sockA = "thm-a-$pid8-$($name -replace '^psmux-theme-','')"
         $sockB = "thm-b-$pid8-$($name -replace '^psmux-theme-','')"
+        # One server at a time: two servers running theme scripts side by side
+        # proved flaky on CI runners.
         Start-Themed $sockA "$options`nset -g @plugin 'psmux-plugins/$name'"
-        Start-Themed $sockB "$options`nrun-shell 'pwsh -NoProfile -File `"$ps1`"'"
         $staticLook = Read-Bar $sockA
-        $default = Read-Bar $sockB
         $viaPlugin = Wait-Bar $sockA $staticLook
+        Stop-Themed $sockA
+        Start-Themed $sockB "$options`nrun-shell 'pwsh -NoProfile -File `"$ps1`"'"
         $viaScript = Wait-Bar $sockB $default
         Check "$name : running the .ps1 directly applies the theme (sanity)" ($viaScript -ne $default -and $viaScript -match 'status-left=\S') $viaScript
         Check "$name : options change the look when loaded with @plugin" ($viaPlugin -ne $staticLook) "still the static plugin.conf look"
