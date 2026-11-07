@@ -6,6 +6,9 @@
 # =============================================================================
 
 $ErrorActionPreference = "Continue"
+
+# Temporary home, own psmux server; see _sandbox.ps1.
+. (Join-Path $PSScriptRoot '_sandbox.ps1')
 $PSMUX = (Get-Command psmux -EA Stop).Source
 $psmuxDir = "$env:USERPROFILE\.psmux"
 $PLUGIN_DIR = Join-Path $PSScriptRoot "..\psmux-vim-navigator"
@@ -81,7 +84,7 @@ Cleanup
 & $PSMUX new-session -d -s $SESSION -x 120 -y 40 2>&1 | Out-Null
 if (-not (Wait-Session $SESSION)) {
     Write-Fail "Could not create test session"
-    exit 1
+    Exit-TestSandbox; exit 1
 }
 Write-Host "  Session created" -ForegroundColor DarkGray
 
@@ -176,4 +179,4 @@ Cleanup
 Write-Host "`n=== Results ===" -ForegroundColor Cyan
 Write-Host "  Passed: $($script:TestsPassed)" -ForegroundColor Green
 Write-Host "  Failed: $($script:TestsFailed)" -ForegroundColor $(if ($script:TestsFailed -gt 0) { "Red" } else { "Green" })
-exit $script:TestsFailed
+Exit-TestSandbox; exit $script:TestsFailed

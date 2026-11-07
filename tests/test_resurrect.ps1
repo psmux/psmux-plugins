@@ -5,6 +5,9 @@
 # =============================================================================
 $ErrorActionPreference = 'Continue'
 
+# Temporary home, own psmux server; see _sandbox.ps1.
+. (Join-Path $PSScriptRoot '_sandbox.ps1')
+
 $pass = 0; $fail = 0
 $results = @()
 
@@ -28,7 +31,7 @@ foreach ($n in @('psmux', 'pmux', 'tmux')) {
 }
 if (-not $PSMUX) {
     Write-Host "FATAL: psmux binary not found!" -ForegroundColor Red
-    exit 1
+    Exit-TestSandbox; exit 1
 }
 
 $PLUGIN_ROOT = Split-Path $PSScriptRoot -Parent
@@ -363,8 +366,8 @@ if ($fail -gt 0) {
     $results | Where-Object { $_.Result -eq 'FAIL' } | ForEach-Object {
         Write-Host "  $($_.Test): $($_.Detail)" -ForegroundColor Red
     }
-    exit 1
+    Exit-TestSandbox; exit 1
 } else {
     Write-Host "All tests passed!" -ForegroundColor Green
-    exit 0
+    Exit-TestSandbox; exit 0
 }

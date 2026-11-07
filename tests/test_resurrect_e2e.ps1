@@ -6,6 +6,9 @@
 # =============================================================================
 
 $ErrorActionPreference = "Continue"
+
+# Temporary home, own psmux server; see _sandbox.ps1.
+. (Join-Path $PSScriptRoot '_sandbox.ps1')
 $PSMUX = (Get-Command psmux -EA Stop).Source
 $psmuxDir = "$env:USERPROFILE\.psmux"
 $RESURRECT_DIR = "$env:USERPROFILE\.psmux\resurrect"
@@ -73,7 +76,7 @@ Cleanup
 & $PSMUX new-session -d -s $SESSION -n "editor" -c $env:USERPROFILE 2>&1 | Out-Null
 if (-not (Wait-Session $SESSION)) {
     Write-Fail "Could not create test session"
-    exit 1
+    Exit-TestSandbox; exit 1
 }
 Write-Host "  Session created" -ForegroundColor DarkGray
 
@@ -139,7 +142,7 @@ else { Write-Fail "No sessions in JSON" }
 # Find our test session
 $testSession = $json.sessions | Where-Object { $_.name -eq $SESSION }
 if ($testSession) { Write-Pass "Test session '$SESSION' found in save" }
-else { Write-Fail "Test session '$SESSION' not in save"; exit 1 }
+else { Write-Fail "Test session '$SESSION' not in save"; Exit-TestSandbox; exit 1 }
 
 # Window count
 if ($testSession.windows.Count -eq 3) { Write-Pass "3 windows saved" }
@@ -282,7 +285,7 @@ Write-Host "`n[Test 12] Restore script recreates session" -ForegroundColor Yello
 Start-Sleep -Seconds 5  # Give time for session creation + pane splits
 
 if (Wait-Session $SESSION 20000) { Write-Pass "Session '$SESSION' restored" }
-else { Write-Fail "Session '$SESSION' not found after restore"; exit 1 }
+else { Write-Fail "Session '$SESSION' not found after restore"; Exit-TestSandbox; exit 1 }
 
 # === TEST 13: Window count restored ===
 Write-Host "`n[Test 13] Window count restored" -ForegroundColor Yellow
@@ -603,4 +606,4 @@ Write-Host "`n=== Results ===" -ForegroundColor Cyan
 Write-Host "  Passed: $($script:TestsPassed)" -ForegroundColor Green
 Write-Host "  Failed: $($script:TestsFailed)" -ForegroundColor $(if ($script:TestsFailed -gt 0) { "Red" } else { "Green" })
 Write-Host ""
-exit $script:TestsFailed
+Exit-TestSandbox; exit $script:TestsFailed

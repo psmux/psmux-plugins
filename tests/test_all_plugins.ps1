@@ -5,6 +5,9 @@
 # =============================================================================
 $ErrorActionPreference = 'Continue'
 
+# Temporary home, own psmux server; see _sandbox.ps1.
+. (Join-Path $PSScriptRoot '_sandbox.ps1')
+
 $pass = 0; $fail = 0; $warn = 0
 $results = @()
 
@@ -34,7 +37,7 @@ foreach ($n in @('psmux', 'pmux')) {
 }
 if (-not $PSMUX) {
     Write-Host "FATAL: psmux/pmux binary not found!" -ForegroundColor Red
-    exit 1
+    Exit-TestSandbox; exit 1
 }
 Write-Host "`n=== psmux Plugin Compatibility Test ===" -ForegroundColor Magenta
 Write-Host "Binary: $PSMUX" -ForegroundColor Cyan
@@ -436,6 +439,6 @@ if ($warn -gt 0) {
 }
 
 Write-Host ""
-exit $fail
+Exit-TestSandbox; exit $fail
 
 
