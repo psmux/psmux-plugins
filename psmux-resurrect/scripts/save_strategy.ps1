@@ -10,16 +10,23 @@ function Get-SaveCommand {
         [Parameter(Mandatory)] [string] $Directory,
         [Parameter(Mandatory)] [string] $PsmuxBin,
         [Parameter(Mandatory)] [string] $PluginDir,
-        [string] $UserStrategiesDir = (Join-Path $env:USERPROFILE '.psmux\strategies\save_command_strategies')
+        [string] $UserStrategiesDir = (Join-Path $env:USERPROFILE '.psmux\strategies\save_command_strategies'),
+        # The caller may read @resurrect-save-command-strategy once and pass it
+        # in, so a save does not ask psmux again for every pane.
+        [AllowEmptyString()] [string] $KnownStrategy
     )
 
     $strategyName = ''
-    try {
-        $raw = (& $PsmuxBin show-options -gv '@resurrect-save-command-strategy' 2>&1 | Out-String).Trim()
-        if ($LASTEXITCODE -eq 0 -and $raw) {
-            $strategyName = $raw
-        }
-    } catch {}
+    if ($PSBoundParameters.ContainsKey('KnownStrategy')) {
+        $strategyName = $KnownStrategy
+    } else {
+        try {
+            $raw = (& $PsmuxBin show-options -gv '@resurrect-save-command-strategy' 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -eq 0 -and $raw) {
+                $strategyName = $raw
+            }
+        } catch {}
+    }
     # Unset (or blank) strategy => record the bare command, no spawn.
     if ([string]::IsNullOrWhiteSpace($strategyName)) { return $PaneCommand }
 
@@ -39,7 +46,9 @@ function Get-SaveCommand {
     $process = [System.Diagnostics.Process]::new()
     try {
         $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-        $startInfo.FileName = (Get-Command pwsh -CommandType Application -ErrorAction Stop).Source
+        # Get-Command can return several pwsh.exe (the Store install puts two
+        # aliases on PATH); FileName needs exactly one.
+        $startInfo.FileName = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
         foreach ($argument in @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $invocation)) {
             $startInfo.ArgumentList.Add($argument)
         }

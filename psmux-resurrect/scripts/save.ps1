@@ -98,7 +98,7 @@ function Get-PaneListing([string]$sessionName, [string]$format) {
     $startInfo = [Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $PSMUX
     if ([IO.Path]::GetExtension($PSMUX) -eq '.ps1') {
-        $startInfo.FileName = (Get-Command pwsh -CommandType Application -ErrorAction Stop).Source
+        $startInfo.FileName = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
         $literals = @($PSMUX) + $arguments | ForEach-Object {
             "'{0}'" -f [Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($_)
         }
@@ -242,10 +242,13 @@ $skippedSessions = $capture.Skipped
 
 # Strategies run only for included panes after the complete capture succeeds.
 # Their failures preserve the original command and do not retry the capture.
+# Read the strategy option once rather than once per pane.
+$saveStrategy = (& $PSMUX show-options -gv '@resurrect-save-command-strategy' 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0) { $saveStrategy = '' }
 foreach ($entry in $capture.Commands) {
     $pane = $entry.Pane
     $pane.command = Get-SaveCommand -PaneCommand $pane.command -PanePid $entry.Pid `
-        -Directory $pane.directory -PsmuxBin $PSMUX -PluginDir $PLUGIN_DIR
+        -Directory $pane.directory -PsmuxBin $PSMUX -PluginDir $PLUGIN_DIR -KnownStrategy $saveStrategy
     if ($captureEnabled) {
         $paneContent = (& $PSMUX capture-pane -t $entry.Target -p 2>&1 | Out-String)
         if ($LASTEXITCODE -eq 0 -and $paneContent) { $pane['content'] = $paneContent }

@@ -121,6 +121,20 @@ param([string]$Command, [string]$PanePid, [string]$Directory)
     $actual = Get-SaveCommand -PaneCommand 'nvim' -PanePid '99' -Directory $sandbox `
         -PsmuxBin $fake -PluginDir $plugin -UserStrategiesDir (Join-Path $sandbox 'absent')
     Check 'bundled default strategy echoes the original command' ($actual -ceq 'nvim') $actual
+
+    # save.ps1 reads the option once and passes it in. Then psmux is not asked
+    # per pane: a psmux stand-in that throws proves no call is made.
+    $noPsmux = Join-Path $sandbox 'no-psmux.ps1'
+    Set-Content $noPsmux "Set-Content '$marker' psmux-called; exit 9"
+    Remove-Item $marker -ErrorAction SilentlyContinue
+    Write-Strategy 'known' 'Write-Output known-result'
+    $actual = Get-SaveCommand -PaneCommand 'pwsh' -PanePid '1' -Directory $sandbox `
+        -PsmuxBin $noPsmux -PluginDir $plugin -UserStrategiesDir $userDir -KnownStrategy 'known'
+    Check 'a passed-in strategy name is used' ($actual -ceq 'known-result') $actual
+    $actual = Get-SaveCommand -PaneCommand 'pwsh' -PanePid '1' -Directory $sandbox `
+        -PsmuxBin $noPsmux -PluginDir $plugin -UserStrategiesDir $userDir -KnownStrategy ''
+    Check 'a passed-in empty name keeps the command' ($actual -ceq 'pwsh') $actual
+    Check 'a passed-in name means psmux is not asked' (-not (Test-Path $marker))
 }
 finally {
     Remove-Item $sandbox -Recurse -Force

@@ -25,7 +25,7 @@ function Wait-For([scriptblock]$condition) {
 }
 function Start-Restore {
     $si = [Diagnostics.ProcessStartInfo]::new()
-    $si.FileName = (Get-Command pwsh).Source
+    $si.FileName = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
     foreach ($arg in @('-NoProfile', '-File', $restore)) { $si.ArgumentList.Add($arg) }
     $si.UseShellExecute = $false
     $si.RedirectStandardOutput = $true; $si.RedirectStandardError = $true

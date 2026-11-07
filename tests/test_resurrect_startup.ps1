@@ -50,7 +50,7 @@ function Native([string[]]$Arguments, [switch]$AllowFailure, [switch]$Driver) {
 }
 function Run-Script([string]$Path, [string[]]$Arguments = @()) {
     $beforeHash = if ($snapshot -and $Path -in @($restore, $autoRestore)) { (Get-FileHash $snapshot).Hash }
-    $si = [Diagnostics.ProcessStartInfo]::new(); $si.FileName = (Get-Command pwsh).Source
+    $si = [Diagnostics.ProcessStartInfo]::new(); $si.FileName = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
     foreach ($a in (@('-NoProfile', '-File', $Path) + $Arguments)) { $si.ArgumentList.Add($a) }
     $si.UseShellExecute = $false; $si.RedirectStandardOutput = $true; $si.RedirectStandardError = $true
     $p = [Diagnostics.Process]::new(); $p.StartInfo = $si
