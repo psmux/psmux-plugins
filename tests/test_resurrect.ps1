@@ -66,8 +66,10 @@ Check "plugin.conf exists" (Test-Path (Join-Path $PLUGIN_ROOT 'psmux-resurrect\p
 # Verify scripts use format flags (the fix), not fragile regex
 $saveContent = Get-Content $SAVE_SCRIPT -Raw
 Check "save.ps1 uses list-sessions -F format" ($saveContent -match "list-sessions\s+-F\s+'#\{session_name\}'") "Uses format flags for clean session parsing"
-Check "save.ps1 uses list-windows -F format" ($saveContent -match "winFmt\s*=\s*'#\{window_index\}" -and $saveContent -match "list-windows\s+-t\s+\`$sessionName\s+-F\s+\`$winFmt") "Uses format flags for clean window parsing"
-Check "save.ps1 uses list-panes -F format" ($saveContent -match "paneFmt\s*=\s*'#\{pane_index\}" -and $saveContent -match "list-panes\s+-t\s+.*-F\s+\`$paneFmt") "Uses format flags for clean pane parsing"
+# save.ps1 reads windows and panes in one list-panes -s query per session (#39),
+# with every field quoted so titles and paths cannot break the record.
+Check "save.ps1 captures each session with one list-panes -s query" ($saveContent -match "'list-panes',\s*'-s'" -and $saveContent -notmatch 'list-windows\s+-t') "One query per session keeps windows and panes consistent"
+Check "save.ps1 quotes every captured field" ($saveContent -match "'#\{\{q:\{0\}\}\}'") "Fields use #{q:...}"
 Check "save.ps1 uses show-options -gv" ($saveContent -match "show-options\s+-gv") "Uses value-only flag"
 
 # =============================================================================
