@@ -296,7 +296,9 @@ if ($sessions -match $SESSION) {
     Check "sensible: automatic-rename on" ($opts -match 'automatic-rename\s+on')
     
     # psmux-theme-gruvbox theme options (should be last applied)
-    Check "gruvbox: status-style has bg=#3c3836" ($opts -match 'status-style.*bg=#3c3836')
+    # Expect whatever background the theme's plugin.conf sets, not a copy of it.
+    $gruvboxBg = if ((Get-Content (Join-Path $PLUGIN_DIR 'psmux-theme-gruvbox\plugin.conf') -Raw) -match 'status-style "bg=(#[0-9a-fA-F]{6})') { $Matches[1] } else { 'missing' }
+    Check "gruvbox: status-style has bg=$gruvboxBg" ($opts -match "status-style.*bg=$gruvboxBg")
     Check "gruvbox: status-left set" ($opts -match 'status-left\s')
     Check "gruvbox: status-right set" ($opts -match 'status-right\s')
     Check "gruvbox: pane-active-border-style" ($opts -match 'pane-active-border-style.*fg=#8ec07c')
