@@ -237,8 +237,10 @@ foreach (`$key in 'PSMUX_SESSION','PSMUX_ACTIVE','PSMUX_SESSION_NAME','PSMUX_TAR
     $ready = Join-Path $root 'busy-ready.txt'
     Native @('send-keys', '-t', 'main:0.0', "Set-Content '$ready' `$PID; Start-Sleep -Seconds 600", 'Enter') | Out-Null
     $deadline = (Get-Date).AddSeconds(10)
-    while (-not (Test-Path $ready) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
-    Require 'manual restore fixture has a working command' ((Test-Path $ready) -and (Get-Content $ready -Raw).Trim() -eq $before)
+    # Wait for the content, not only the file: Set-Content can be caught between
+    # creating it and writing the PID.
+    while (-not "$(Get-Content $ready -Raw -ErrorAction SilentlyContinue)".Trim() -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    Require 'manual restore fixture has a working command' ("$(Get-Content $ready -Raw -ErrorAction SilentlyContinue)".Trim() -eq $before)
     Run-Script $restore | Out-Null
     Check 'manual restore preserves a working sole pane' ((Pane 'main:0.0') -eq $before -and [bool](Get-Process -Id ([int]$before) -ErrorAction SilentlyContinue) -and -not (Test-Path $firstMarker))
 
