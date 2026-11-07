@@ -7,7 +7,7 @@ function Check($name, $condition, $detail = '') {
     if ($condition) { Write-Host "  PASS: $name"; $script:pass++ }
     else { Write-Host "  FAIL: $name >> $detail"; $script:fail++ }
 }
-$real = (Get-Command psmux -CommandType Application -ErrorAction Stop).Source
+$real = (Get-Command psmux -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $save = Join-Path (Split-Path $PSScriptRoot -Parent) 'psmux-resurrect\scripts\save.ps1'
 $root = Join-Path $env:TEMP ('capture-e2e-' + [guid]::NewGuid().ToString('N'))
 $homeDir = Join-Path $root 'home'
