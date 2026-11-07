@@ -4,30 +4,44 @@ An arctic, north-bluish clean and elegant theme for psmux based on the [Nord](ht
 
 ## Installation
 
-Add to your `~/.psmux.conf`:
-
-```tmux
-# Optional: customize before loading
-set -g @nord-show-powerline 'on'
-set -g @nord-powerline-style 'arrow'
-
-# Load theme
-run-shell 'pwsh -NoProfile -File "/path/to/psmux-theme-nord/psmux-theme-nord.ps1"'
-```
-
-Or with PPM:
+With PPM:
 
 ```tmux
 set -g @plugin 'psmux-plugins/psmux-theme-nord'
 ```
 
+Or run the script yourself:
+
+```tmux
+run-shell 'pwsh -NoProfile -File "/path/to/psmux-theme-nord/psmux-theme-nord.ps1"'
+```
+
+Loaded through PPM, psmux first paints the theme's static look from `plugin.conf`
+straight away. That look needs no Nerd Font. If you set any `@nord-*` option
+below, `plugin.conf` then runs `psmux-theme-nord.ps1`, which applies the
+powerline version with your options a moment after the server starts. Both
+ways of loading give the same result, and the options work whether you set
+them before or after the `@plugin` line.
+
 ## Options
 
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
-| `@nord-show-powerline` | `on` / `off` | `on` | Use powerline separators |
-| `@nord-powerline-style` | `arrow` / `round` | `arrow` | Arrow (``) or round (``) separator glyphs |
+| `@nord-show-powerline` | `on` / `off` | `on` | Use powerline separators (needs a Nerd Font) |
+| `@nord-separator` | `arrow` / `rounded` / `slant` | `arrow` | Shape of the powerline separators |
+| `@nord-show-icons` | `on` / `off` | `on` | Show Nerd Font icons |
+| `@nord-show-user` | `on` / `off` | `on` | Show the user name on the left |
+| `@nord-show-zoom` | `on` / `off` | `on` | Mark a zoomed window |
+| `@nord-show-sync` | `on` / `off` | `on` | Show a SYNC badge when panes are synchronized |
+| `@nord-show-pane-count` | `on` / `off` | `on` | Show the pane count on windows with more than one pane |
 
+Example:
+
+```tmux
+set -g @nord-separator 'rounded'
+set -g @nord-show-user 'off'
+set -g @plugin 'psmux-plugins/psmux-theme-nord'
+```
 ## Color Palette
 
 Nord organizes its 16 colors into four groups:
