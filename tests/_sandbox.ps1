@@ -42,6 +42,11 @@ function Exit-TestSandbox {
     # Kills the sandbox's own default server only: USERPROFILE still points
     # at the sandbox here.
     if ($bin -and $env:USERPROFILE -eq $script:SandboxHome) { & $bin.Source kill-server 2>&1 | Out-Null }
+    # A server a test started under another name or data dir can survive that;
+    # anything still carrying this sandbox's path in its command line is ours.
+    Get-CimInstance Win32_Process -Filter "Name='psmux.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($script:SandboxRoot) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     foreach ($v in $script:SandboxSaved.Keys) {
         [Environment]::SetEnvironmentVariable($v, $script:SandboxSaved[$v])
     }
