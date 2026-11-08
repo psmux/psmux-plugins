@@ -50,7 +50,9 @@ As upstream vim-tmux-navigator does, each key is bound to
 `if-shell -F '#{m/r:<vim-detect-pattern>,#{pane_current_command}}' 'send-keys <key>' 'select-pane -<dir>'`,
 so the server checks the pane that receives the key on every keystroke, in
 every session, with no lag after vim starts or exits. Verified with real
-keypresses on psmux 3.4.0.
+keypresses on psmux 3.4.0. This needs psmux 3.3.7 or newer: older releases
+dropped an `if-shell` bound to a key ([psmux#476](https://github.com/psmux/psmux/issues/476)),
+so on those the keys do nothing.
 
 Earlier versions of this plugin rebound the keys from a background poller
 (`scripts/poll-vim-state.ps1`), because psmux 3.3.6 dropped a key-bound
