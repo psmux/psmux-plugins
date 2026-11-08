@@ -59,10 +59,28 @@ pane, so in every other session the keys stayed `select-pane` and never
 reached vim. Loading this version stops a poller an earlier version left
 running.
 
-**Known limitation:** `#{pane_current_command}` names the deepest process
-under the pane. A vim that runs child processes of its own (Neovim with
-plugins starting `git` or a language server) can be reported as that child,
-and the key then switches panes instead of reaching vim.
+`#{pane_current_command}` names the deepest process under the pane. A vim
+that runs child processes of its own (Neovim with plugins starting `git` or
+a language server, as LazyVim does) can be reported as that child, and the
+key would then switch panes instead of reaching vim. For that case the
+bindings also treat a pane as vim while its `@pane-is-vim` pane option is
+set to anything but `0` or empty. [smart-splits.nvim](https://github.com/mrjones2014/smart-splits.nvim)
+already sets it. Without that plugin, a few lines in `init.lua` do the same:
+
+```lua
+local function pane_is_vim(v)
+  if vim.env.TMUX_PANE then
+    vim.fn.system({ 'tmux', 'set-option', '-p', '-t', vim.env.TMUX_PANE, '@pane-is-vim', v })
+  end
+end
+vim.api.nvim_create_autocmd('VimEnter', { callback = function() pane_is_vim('1') end })
+vim.api.nvim_create_autocmd('VimLeavePre', { callback = function() pane_is_vim('0') end })
+```
+
+What it costs: for each navigation key psmux looks up the pane's process,
+and that lookup walks the process table unless psmux walked it in the last
+250 ms. On psmux 3.4.0 that adds a few milliseconds to a key pressed after a
+pause. Other keys are not affected, and nothing runs while you are idle.
 
 ## Options
 

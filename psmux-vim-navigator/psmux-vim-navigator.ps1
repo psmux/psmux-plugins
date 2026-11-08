@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # =============================================================================
-# psmux-vim-navigator - Seamless vim-aware pane navigation for psmux
+# psmux-vim-navigator - vim-aware pane navigation for psmux
 # Port of christoomey/vim-tmux-navigator (tmux side) for psmux
 # =============================================================================
 #
@@ -69,7 +69,11 @@ if (Test-Path $lockFile) {
 }
 
 # --- Root table: vim-aware, checked on every keystroke ---
-$isVim = "#{m/r:$vimPattern,#{pane_current_command}}"
+# A pane counts as vim when its @pane-is-vim option is set (smart-splits.nvim
+# sets it, and a few lines of init.lua can), which covers a vim that
+# pane_current_command reports as one of its own children. Otherwise the
+# process name is matched against @vim_navigator_pattern.
+$isVim = "#{?#{@pane-is-vim},1,#{m/r:$vimPattern,#{pane_current_command}}}"
 & $PSMUX bind-key -n $moveLeft  if-shell -F $isVim "send-keys $moveLeft"  'select-pane -L' 2>&1 | Out-Null
 & $PSMUX bind-key -n $moveDown  if-shell -F $isVim "send-keys $moveDown"  'select-pane -D' 2>&1 | Out-Null
 & $PSMUX bind-key -n $moveUp    if-shell -F $isVim "send-keys $moveUp"    'select-pane -U' 2>&1 | Out-Null
