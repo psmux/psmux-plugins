@@ -35,6 +35,8 @@ param(
     [string[]]$Scenarios = @('nav', 'type', 'idle', 'save', 'theme')
 )
 $ErrorActionPreference = 'Stop'
+# pwsh -File passes "-Scenarios nav,type" as the single string "nav,type".
+$Scenarios = @($Scenarios | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $Repo = (Resolve-Path $Repo).Path
 if (-not $OutDir) { $OutDir = Join-Path $HOME ('psmux-bench\psmux-plugins\' + (Get-Date -Format 'yyyy-MM-dd')) }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
