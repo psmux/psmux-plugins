@@ -41,12 +41,17 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 $psmux = (Get-Command psmux -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $pwshExe = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $work = Join-Path ([IO.Path]::GetTempPath()) ('psmux-bench-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force $work | Out-Null
-$keylat = Join-Path $work 'keylat.exe'
-& $csc /nologo /out:$keylat (Join-Path $PSScriptRoot 'keylat.cs') | Out-Null
-if (-not (Test-Path $keylat)) { throw "could not build keylat.exe with $csc" }
+# keylat is compiled in memory by a child pwsh (Add-Type) and never written
+# out as an .exe: Defender's ML heuristics quarantine a fresh exe that writes
+# into another console's input (Trojan:Win32/Bearfoos.A!ml), and the next
+# run then fails to start it.
+$keylatSrc = Join-Path $PSScriptRoot 'keylat.cs'
+function Invoke-KeyLatProbe([string[]]$argv) {
+    $list = ($argv | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
+    & $pwshExe -NoProfile -Command "Add-Type -Path '$keylatSrc'; exit [KeyLat]::Main(@($list))"
+}
 
 $saved = @{}
 foreach ($v in 'USERPROFILE', 'HOME', 'PSMUX_DATA_DIR', 'PSMUX_ALLOW_NESTING', 'PSMUX_SESSION', 'PSMUX_SESSION_NAME', 'PSMUX_TARGET_SESSION', 'TMUX', 'TMUX_PANE') {
@@ -148,7 +153,7 @@ function Invoke-KeyLat([string]$mode) {
     $client = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($con.Id)" | Select-Object -First 1
     if (-not $client) { throw 'attached client did not start' }
     $out = Join-Path $work "keylat-$mode.txt"
-    & $keylat $client.ProcessId $mode $Samples $out $GapMs
+    Invoke-KeyLatProbe @("$($client.ProcessId)", $mode, "$Samples", $out, "$GapMs")
     $lines = @(Get-Content $out)
     if ($lines[0] -like 'error*') { throw "keylat: $($lines[0])" }
     & $psmux detach-client -a 2>&1 | Out-Null

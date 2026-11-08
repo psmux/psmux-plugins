@@ -20,7 +20,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-class KeyLat {
+public class KeyLat {
     [StructLayout(LayoutKind.Sequential)] struct COORD { public short X, Y; }
     [StructLayout(LayoutKind.Sequential)] struct SMALL_RECT { public short L, T, R, B; }
     [StructLayout(LayoutKind.Sequential)] struct CSBI { public COORD size, cursor; public ushort attr; public SMALL_RECT win; public COORD max; }
@@ -60,7 +60,7 @@ class KeyLat {
         return -1;
     }
 
-    static int Main(string[] a) {
+    public static int Main(string[] a) {
         uint pid = uint.Parse(a[0]); string mode = a[1]; int n = int.Parse(a[2]); string outPath = a[3];
         int gap = a.Length > 4 ? int.Parse(a[4]) : 150;
         FreeConsole();
