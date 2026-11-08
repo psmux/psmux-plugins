@@ -117,6 +117,22 @@ $idleMatch = $idleCmd -match $vimPattern
 if (-not $idleMatch) { Write-Pass "idle shell ('$idleCmd') does not match vim pattern" }
 else { Write-Fail "idle shell ('$idleCmd') incorrectly matches vim pattern" }
 
+# @pane-is-vim (set by smart-splits.nvim or init.lua) makes a pane count as
+# vim whatever pane_current_command says; 0 or unset falls back to the name.
+$bindFmt = "#{?#{@pane-is-vim},1,#{m/r:$vimPattern,#{pane_current_command}}}"
+$paneId = (& $PSMUX display-message -t $SESSION -p '#{pane_id}' 2>&1 | Out-String).Trim()
+$cond = { (& $PSMUX display-message -t $SESSION -p $bindFmt 2>&1 | Out-String).Trim() }
+$c = & $cond
+if ($c -eq '0') { Write-Pass "condition is false in a shell pane without @pane-is-vim" } else { Write-Fail "condition is '$c' in a shell pane without @pane-is-vim" }
+& $PSMUX set-option -p -t $paneId '@pane-is-vim' 1 2>&1 | Out-Null
+$c = & $cond
+if ($c -eq '1') { Write-Pass "condition is true when @pane-is-vim is 1" } else { Write-Fail "condition is '$c' when @pane-is-vim is 1" }
+& $PSMUX set-option -p -t $paneId '@pane-is-vim' 0 2>&1 | Out-Null
+$c = & $cond
+if ($c -eq '0') { Write-Pass "condition is false when @pane-is-vim is 0" } else { Write-Fail "condition is '$c' when @pane-is-vim is 0" }
+& $PSMUX set-option -p -u -t $paneId '@pane-is-vim' 2>&1 | Out-Null
+if ($rootKeys -match [regex]::Escape('@pane-is-vim')) { Write-Pass "root bindings check @pane-is-vim" } else { Write-Fail "root bindings do not check @pane-is-vim" }
+
 $nvimCmd = (Get-Command nvim -EA SilentlyContinue)
 if ($nvimCmd) {
     & $PSMUX send-keys -t $SESSION "& `"$($nvimCmd.Source)`"" Enter 2>&1 | Out-Null
