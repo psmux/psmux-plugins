@@ -26,6 +26,10 @@ param(
     [string]$Label = 'current',
     [string]$OutDir,
     [int]$Samples = 80,
+    # Pause after each nav/type sample. psmux caches the process table a key
+    # binding's #{pane_current_command} reads for 250 ms, so a gap above that
+    # makes every key pay for a fresh walk, as keys spaced by a person do.
+    [int]$GapMs = 150,
     [int]$IdleSeconds = 30,
     [int]$SaveRuns = 5,
     [string[]]$Scenarios = @('nav', 'type', 'idle', 'save', 'theme')
@@ -58,6 +62,7 @@ $machine = [ordered]@{
     cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
     logical_cpus = [Environment]::ProcessorCount
     commit = (git -C $Repo rev-parse --short HEAD 2>$null)
+    gap_ms = $GapMs
 }
 
 function Get-Stats([double[]]$xs) {
@@ -143,7 +148,7 @@ function Invoke-KeyLat([string]$mode) {
     $client = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($con.Id)" | Select-Object -First 1
     if (-not $client) { throw 'attached client did not start' }
     $out = Join-Path $work "keylat-$mode.txt"
-    & $keylat $client.ProcessId $mode $Samples $out
+    & $keylat $client.ProcessId $mode $Samples $out $GapMs
     $lines = @(Get-Content $out)
     if ($lines[0] -like 'error*') { throw "keylat: $($lines[0])" }
     & $psmux detach-client -a 2>&1 | Out-Null

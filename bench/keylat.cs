@@ -1,6 +1,6 @@
 // Keystroke-to-screen latency probe for an attached psmux client.
 //
-// keylat.exe <client-pid> <nav|type> <count> <out.csv>
+// keylat.exe <client-pid> <nav|type> <count> <out.csv> [gap-ms]
 //
 // Attaches to the console of the psmux client, writes key events into its
 // input buffer (WriteConsoleInput, the same path a real keyboard takes) and
@@ -11,7 +11,8 @@
 //         right; a Backspace then restores the prompt (not timed).
 // A change only counts when it is still there 40 ms later, so a cursor that
 // merely passes through while a frame is drawn is not mistaken for the result.
-// One sample in milliseconds per line goes to out.csv.
+// One sample in milliseconds per line goes to out.csv. gap-ms (default 150)
+// is the pause after each sample, so a test can space keys the way a person does.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -61,6 +62,7 @@ class KeyLat {
 
     static int Main(string[] a) {
         uint pid = uint.Parse(a[0]); string mode = a[1]; int n = int.Parse(a[2]); string outPath = a[3];
+        int gap = a.Length > 4 ? int.Parse(a[4]) : 150;
         FreeConsole();
         if (!AttachConsole(pid)) { File.WriteAllText(outPath, "error,attach " + Marshal.GetLastWin32Error()); return 2; }
         hin = CreateFileW("CONIN$", 0xC0000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
@@ -85,7 +87,7 @@ class KeyLat {
                 WaitFor(back, c => c.cursor.X == x0);
             }
             samples.Add(t < 0 ? "timeout" : t.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
-            Thread.Sleep(150);
+            Thread.Sleep(gap);
         }
         FreeConsole();
         File.WriteAllLines(outPath, samples);
