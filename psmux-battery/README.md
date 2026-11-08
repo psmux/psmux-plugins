@@ -18,7 +18,7 @@ Add `#{@battery_display}` to your status-right:
 set -g status-right '#{@battery_display} | %H:%M %d-%b-%y'
 ```
 
-Or press `Prefix + B` to see battery info as a message.
+Or press `Prefix + b` to see battery info as a message.
 
 ## Color Coding
 

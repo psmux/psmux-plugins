@@ -1,6 +1,6 @@
 # Psmux Plugins
 
-The official plugin ecosystem for [psmux](https://github.com/psmux/psmux) — the native Windows tmux built in Rust.
+The official plugins for [psmux](https://github.com/psmux/psmux), the native Windows tmux built in Rust.
 
 Ports of the most popular tmux plugins, reimplemented in PowerShell for Windows.
 
@@ -63,6 +63,10 @@ Start psmux and press `Prefix + I` (capital I) to install.
 | [**psmux-theme-tokyonight**](psmux-theme-tokyonight/) | Tokyo Night theme (3 styles) | [tokyonight.nvim](https://github.com/folke/tokyonight.nvim) |
 | [**psmux-theme-gruvbox**](psmux-theme-gruvbox/) | Gruvbox retro theme (dark/light) | [tmux-gruvbox](https://github.com/egel/tmux-gruvbox) |
 | [**psmux-theme-warm-burnout**](psmux-theme-warm-burnout/) | Warm Burnout theme (dark/light) | [felipefdl/warm-burnout](https://github.com/felipefdl/warm-burnout) |
+| [**psmux-theme-everforest**](psmux-theme-everforest/) | Everforest green theme (dark/light, 3 contrasts) | [tmux-everforest](https://github.com/TanglingTreats/tmux-everforest) |
+| [**psmux-theme-kanagawa**](psmux-theme-kanagawa/) | Kanagawa theme (wave/dragon/lotus) | [kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) |
+| [**psmux-theme-onedark**](psmux-theme-onedark/) | One Dark theme | [tmux-onedark-theme](https://github.com/odedlaz/tmux-onedark-theme) |
+| [**psmux-theme-rosepine**](psmux-theme-rosepine/) | Rosé Pine theme (main/moon/dawn) | [rose-pine/tmux](https://github.com/rose-pine/tmux) |
 
 ---
 
@@ -121,7 +125,7 @@ Start psmux and press `Prefix + I` (capital I) to install.
 ### psmux-battery / psmux-cpu
 | Key | Action |
 |-----|--------|
-| `Prefix + B` | Show battery info |
+| `Prefix + b` | Show battery info |
 | `Prefix + Ctrl-c` | Show CPU/memory info |
 
 ---
